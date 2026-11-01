@@ -97,7 +97,7 @@ impl Tray {
             let inboxes: HashSet<_> = mailbox.folders.iter().filter(|f| f.kind == FolderKind::Inbox).map(|f| f.id).collect();
             let unread = mailbox.messages.values().filter(|m| !m.read && inboxes.contains(&m.folder)).count();
             if self.unread != Some(unread) {
-                let data = if unread == 0 { self.base_icon.clone() } else { badge_icon(unread) };
+                let data = tray_icon(&self.base_icon, unread);
                 if let Ok(icon) = Icon::from_rgba(data.rgba, data.width, data.height) {
                     if let Err(error) = self.icon.set_icon(Some(icon)) { log::warn!("tray icon: {error}"); }
                     let tooltip = if unread == 0 { "MailCraft".to_string() } else { format!("MailCraft — {unread} unread") };
@@ -152,7 +152,22 @@ impl Tray {
     }
 }
 
-/// Draw a legible count over the existing icon; the tooltip retains the exact count.
+/// Keep the app icon visible behind a large unread count.
+fn tray_icon(base: &IconData, unread: usize) -> IconData {
+    if unread == 0 {
+        return base.clone();
+    }
+    let Some(base_image) = image::RgbaImage::from_raw(base.width, base.height, base.rgba.clone()) else { return base.clone() };
+    let mut image = image::imageops::resize(&base_image, 64, 64, image::imageops::FilterType::Lanczos3);
+    let badge = badge_icon(unread);
+    if let Some(badge_image) = image::RgbaImage::from_raw(badge.width, badge.height, badge.rgba) {
+        let badge_image = image::imageops::resize(&badge_image, 44, 44, image::imageops::FilterType::Lanczos3);
+        image::imageops::overlay(&mut image, &badge_image, 20, 20);
+    }
+    IconData { rgba: image.into_raw(), width: 64, height: 64 }
+}
+
+/// Draw a count for the Windows taskbar overlay and tray icon.
 fn badge_icon(unread: usize) -> IconData {
     let mut image = image::RgbaImage::new(64, 64);
     for y in 0_i32..64 {
