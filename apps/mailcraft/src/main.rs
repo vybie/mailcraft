@@ -179,8 +179,13 @@ impl eframe::App for App {
         #[cfg(target_os = "windows")]
         if let Some(tray) = &mut self.6 {
             tray.pump(ctx, &mut self.0);
+            self.0.hidden_in_tray = tray.is_hidden();
         }
         self.0.logic(ctx);
+        #[cfg(target_os = "windows")]
+        if let Some(tray) = &mut self.6 {
+            tray.update_unread(ctx, &self.0);
+        }
         self.3.show(frame);
         let prev = self.0.ui.window;
         self.0.ui.window = ctx.input(|i| WindowGeometry::track(prev, i.viewport(), i.viewport_rect().size()));

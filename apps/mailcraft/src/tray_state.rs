@@ -14,6 +14,10 @@ pub(crate) struct TrayState {
 }
 
 impl TrayState {
+    pub(crate) fn is_hidden(&self) -> bool {
+        self.hidden
+    }
+
     pub(crate) fn show(&mut self, ctx: &Context) {
         self.hidden = false;
         ctx.send_viewport_cmd(ViewportCommand::Visible(true));

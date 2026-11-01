@@ -260,7 +260,7 @@ fn show(app: &mut MailApp, planned: Vec<Planned>) {
                 app.alerts.shown.push_back(alert);
             }
             // (Nothing of the message in the log: only that it failed, and why.)
-            Err(e) => log::debug!("a desktop alert wasn't shown: {e}"),
+            Err(e) => log::warn!("a desktop alert wasn't shown: {e}"),
         }
     }
 }
@@ -291,7 +291,7 @@ pub fn tick(app: &mut MailApp, ctx: &egui::Context) {
         && was == path
     {
         let found = arrivals::arrivals(&app.session.mailbox, &before);
-        let focused = ctx.input(|i| i.focused);
+        let focused = !app.hidden_in_tray && ctx.input(|i| i.focused);
         let planned = plan_mail(&found, app.ui.alert_new_mail, focused);
         show(app, planned);
     }

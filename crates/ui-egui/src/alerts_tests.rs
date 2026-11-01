@@ -202,6 +202,15 @@ fn a_run_that_brings_new_mail_shows_alerts_while_the_window_is_elsewhere() {
 }
 
 #[test]
+fn tray_hidden_window_gets_alerts_even_if_focus_state_is_stale() {
+    let (mut app, recorder, account, inbox) = window();
+    let ctx = egui::Context::default();
+    app.hidden_in_tray = true;
+    run(&mut app, &ctx, true, account, inbox, &[(2, "Sender", "New mail")]);
+    assert_eq!(recorder.shown.lock().unwrap().len(), 1);
+}
+
+#[test]
 fn a_click_brings_the_message_up_and_nothing_else_opens_anything() {
     let (mut app, recorder, account, inbox) = window();
     let ctx = egui::Context::default();

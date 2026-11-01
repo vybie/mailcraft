@@ -1203,6 +1203,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
 /// The application.
 pub struct MailApp {
     pub session: Session,
+    /// The Windows host has hidden the main window in the system tray.
+    pub hidden_in_tray: bool,
     pub ui: UiState,
     pub services: Services,
     pub dialog: Option<dialogs::Dialog>,
@@ -1551,6 +1553,7 @@ impl MailApp {
         let own_mailbox = session.path.as_ref().map(|p| unconfirmed::kept_path(&p.to_string_lossy()));
         MailApp {
             session,
+            hidden_in_tray: false,
             ui: UiState::default(),
             services,
             dialog: None,

@@ -11,8 +11,7 @@
 //!   escaped where the service reads markup in it, so that what a message says is shown as text
 //!   and nothing in it is fetched. No service: Options says so.
 //! - **Windows**: toasts (`Windows.UI.Notifications`), for the AppUserModelID `MailCraft.MailCraft`
-//!   that the `.msi` gives its Start menu shortcut: Windows shows a program's toasts only when it
-//!   knows the program by such a shortcut, so a copy the `.msi` didn't install says so in Options.
+//!   registered on its Start menu shortcut. Windows requires that shortcut for desktop toasts.
 //!   The text goes into the toast's XML as text nodes, never as markup. A click while MailCraft
 //!   runs comes back through the toast's `Activated`. (The process doesn't declare the id itself:
 //!   that call is `unsafe` in the bindings, which this program forbids; started from the shortcut,
@@ -307,7 +306,6 @@ mod toasts {
     pub struct Toasts {
         clicks: Clicks,
         rx: Receiver<u64>,
-        installed: bool,
         turned_off: Mutex<bool>,
         kept: Mutex<VecDeque<ToastNotification>>,
     }
@@ -315,8 +313,7 @@ mod toasts {
     impl Toasts {
         pub fn new(ctx: egui::Context) -> Toasts {
             let (clicks, rx) = Clicks::new(ctx);
-            let installed = crate::install::this_copy() == crate::install::Install::Msi;
-            Toasts { clicks, rx, installed, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()) }
+            Toasts { clicks, rx, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()) }
         }
 
         fn toast(&self, alert: &DesktopAlert) -> windows::core::Result<()> {
@@ -356,15 +353,9 @@ mod toasts {
 
     impl AlertHost for Toasts {
         fn show(&self, alert: &DesktopAlert) -> Result<(), String> {
-            if !self.installed {
-                return Err("not installed by the .msi".into());
-            }
             self.toast(alert).map_err(|e| e.to_string())
         }
         fn trouble(&self) -> Option<AlertTrouble> {
-            if !self.installed {
-                return Some(AlertTrouble::NotInstalled);
-            }
             self.turned_off.lock().ok().filter(|off| **off).map(|_| AlertTrouble::TurnedOff)
         }
         fn clicked(&self) -> Vec<u64> {
