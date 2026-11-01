@@ -152,17 +152,24 @@ impl Tray {
     }
 }
 
-/// Keep the app icon visible behind a large unread count.
+/// Keep the app icon recognizable with a compact badge in its top corner.
 fn tray_icon(base: &IconData, unread: usize) -> IconData {
     if unread == 0 {
         return base.clone();
     }
     let Some(base_image) = image::RgbaImage::from_raw(base.width, base.height, base.rgba.clone()) else { return base.clone() };
     let mut image = image::imageops::resize(&base_image, 64, 64, image::imageops::FilterType::Lanczos3);
+    for y in 0_i32..34 {
+        for x in 30_i32..64 {
+            if (x - 47).pow(2) + (y - 17).pow(2) <= 17 * 17 {
+                image.put_pixel(x as u32, y as u32, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+    }
     let badge = badge_icon(unread);
     if let Some(badge_image) = image::RgbaImage::from_raw(badge.width, badge.height, badge.rgba) {
-        let badge_image = image::imageops::resize(&badge_image, 44, 44, image::imageops::FilterType::Lanczos3);
-        image::imageops::overlay(&mut image, &badge_image, 20, 20);
+        let badge_image = image::imageops::resize(&badge_image, 30, 30, image::imageops::FilterType::Lanczos3);
+        image::imageops::overlay(&mut image, &badge_image, 32, 2);
     }
     IconData { rgba: image.into_raw(), width: 64, height: 64 }
 }
