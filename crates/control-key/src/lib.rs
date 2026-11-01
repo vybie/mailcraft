@@ -12,13 +12,14 @@ pub mod proof;
 mod proof_tests;
 
 /// The app's settings folder (preferences, logs, key files): macOS
-/// `~/Library/Application Support/MailCraft`, Windows `%APPDATA%\MailCraft`, otherwise
+/// `~/Library/Application Support/MailCraft`, the personal profile on Windows, otherwise
 /// `$XDG_CONFIG_HOME/mailcraft` or `~/.config/mailcraft`.
 pub fn settings_dir() -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/MailCraft"))
     } else if cfg!(windows) {
-        std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("MailCraft"))
+        // Keep this fork's profile independent of how the executable was launched.
+        std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join("Documents/Codex/MailCraft-Personal-Data/MailCraft"))
     } else {
         std::env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
