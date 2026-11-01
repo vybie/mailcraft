@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: MailCraft contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The decision to hide, show or quit, independent of the Windows tray implementation.
+//! The decision to minimize, show or quit, independent of the Windows tray implementation.
 
 use egui::{Context, ViewportCommand};
 use mailcraft_ui_egui::MailApp;
@@ -36,10 +36,12 @@ impl TrayState {
         }
     }
 
-    /// Return true only when the main window's close was handled by hiding it.
+    /// Return true when close was handled by minimizing the running window.
     pub(crate) fn before_quit(&mut self, ctx: &Context, app: &MailApp, available: bool) -> bool {
         // An alert or another host path may already have brought the window back.
-        if ctx.viewport(|v| v.commands.contains(&ViewportCommand::Visible(true))) {
+        if ctx.viewport(|v| v.commands.contains(&ViewportCommand::Visible(true)))
+            || (self.hidden && ctx.input(|i| i.focused && i.viewport().minimized == Some(false)))
+        {
             self.hidden = false;
         }
         if self.held_quit && !app.quit_in_progress() && !app.quit_requested {
@@ -76,7 +78,7 @@ impl TrayState {
             return false;
         }
         ctx.send_viewport_cmd(ViewportCommand::CancelClose);
-        ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+        ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
         self.hidden = true;
         ctx.request_repaint_after(Duration::from_secs(2));
         true

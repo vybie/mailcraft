@@ -29,14 +29,14 @@ fn frame(state: &mut TrayState, app: &mut MailApp, close: bool, available: bool)
 }
 
 #[test]
-fn x_hides_without_closing_or_discarding_a_dirty_draft() {
+fn x_minimizes_without_closing_or_discarding_a_dirty_draft() {
     let mut state = TrayState::default();
     let mut app = app();
     app.session.run("mail.new", &json!({})).unwrap();
     app.session.compose.as_mut().unwrap().dirty = true;
     let commands = frame(&mut state, &mut app, true, true);
     assert!(commands.contains(&ViewportCommand::CancelClose));
-    assert!(commands.contains(&ViewportCommand::Visible(false)));
+    assert!(commands.contains(&ViewportCommand::Minimized(true)));
     assert!(state.hidden && app.dialog.is_none() && app.session.compose.as_ref().unwrap().dirty);
 }
 
@@ -47,7 +47,7 @@ fn unavailable_tray_preserves_the_existing_close_and_draft_question() {
     app.session.run("mail.new", &json!({})).unwrap();
     app.session.compose.as_mut().unwrap().dirty = true;
     let commands = frame(&mut state, &mut app, true, false);
-    assert!(!commands.contains(&ViewportCommand::Visible(false)));
+    assert!(!commands.contains(&ViewportCommand::Minimized(true)));
     assert!(commands.contains(&ViewportCommand::CancelClose));
     assert!(app.dialog.is_some() && !state.hidden);
 }
@@ -65,14 +65,14 @@ fn explicit_quit_reopens_before_asking_and_its_next_close_is_not_hidden() {
     assert!(commands.contains(&ViewportCommand::Close));
     let commands = frame(&mut state, &mut app, true, true);
     assert!(commands.contains(&ViewportCommand::CancelClose));
-    assert!(!commands.contains(&ViewportCommand::Visible(false)) && app.dialog.is_some());
+    assert!(!commands.contains(&ViewportCommand::Minimized(true)) && app.dialog.is_some());
     // A second X while the quit question is pending is still a quit, not a hide.
     let commands = frame(&mut state, &mut app, true, true);
-    assert!(!commands.contains(&ViewportCommand::Visible(false)) && app.dialog.is_some());
+    assert!(!commands.contains(&ViewportCommand::Minimized(true)) && app.dialog.is_some());
     // Cancel clears the intent. A later X hides and keeps the draft.
     app.dialog = None;
     let commands = frame(&mut state, &mut app, true, true);
-    assert!(commands.contains(&ViewportCommand::Visible(false)) && app.session.compose.as_ref().unwrap().dirty);
+    assert!(commands.contains(&ViewportCommand::Minimized(true)) && app.session.compose.as_ref().unwrap().dirty);
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn a_later_quit_retry_is_still_a_quit() {
     app.quit_requested = true;
     frame(&mut state, &mut app, false, true);
     let commands = frame(&mut state, &mut app, true, true);
-    assert!(!commands.contains(&ViewportCommand::Visible(false)));
+    assert!(!commands.contains(&ViewportCommand::Minimized(true)));
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn without_a_close_minimize_is_not_converted_to_hide() {
     let mut state = TrayState::default();
     let mut app = app();
     let commands = frame(&mut state, &mut app, false, true);
-    assert!(!commands.contains(&ViewportCommand::Visible(false)) && !state.hidden);
+    assert!(!commands.contains(&ViewportCommand::Minimized(true)) && !state.hidden);
 }
 
 #[test]
@@ -123,5 +123,5 @@ fn an_answered_quit_question_keeps_the_following_close_explicit() {
     app.quit_requested = true;
     assert!(frame(&mut state, &mut app, false, true).contains(&ViewportCommand::Close));
     let commands = frame(&mut state, &mut app, true, true);
-    assert!(!commands.contains(&ViewportCommand::Visible(false)));
+    assert!(!commands.contains(&ViewportCommand::Minimized(true)));
 }
