@@ -184,7 +184,7 @@ impl eframe::App for App {
         self.0.logic(ctx);
         #[cfg(target_os = "windows")]
         if let Some(tray) = &mut self.6 {
-            tray.update_unread(ctx, &self.0);
+            tray.update_unread(ctx, &self.0, frame);
         }
         self.3.show(frame);
         let prev = self.0.ui.window;

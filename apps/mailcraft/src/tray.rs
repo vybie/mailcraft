@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, sync_channel};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use winit::platform::windows::WindowExtWindows;
 
 const OPEN: &str = "mailcraft.tray.open";
 const QUIT: &str = "mailcraft.tray.quit";
@@ -83,7 +84,11 @@ impl Tray {
         self.state.is_hidden()
     }
 
-    pub(crate) fn update_unread(&mut self, ctx: &Context, app: &MailApp) {
+    pub(crate) fn update_unread(&mut self, ctx: &Context, app: &MailApp, frame: &eframe::Frame) {
+        if app.is_opening() {
+            self.revision = None;
+            return;
+        }
         let revision = (app.session.openings(), app.session.rev());
         if self.revision == Some(revision) {
             return;
@@ -102,6 +107,11 @@ impl Tray {
             }
             let tooltip = if unread == 0 { "MailCraft".to_string() } else { format!("MailCraft — {unread} unread") };
             let _ = self.icon.set_tooltip(Some(tooltip));
+            if let Some(window) = frame.winit_window()
+                && let Ok(icon) = winit::window::Icon::from_rgba(data.rgba.clone(), data.width, data.height)
+            {
+                window.set_taskbar_icon(Some(icon));
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(Arc::new(data))));
             self.unread = Some(unread);
         }
