@@ -7437,8 +7437,8 @@ msgstr "Correo reciente"
 msgid "Recurrence"
 msgstr "Periodicidad"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Redo"
 msgstr "Rehacer"
@@ -7448,12 +7448,6 @@ msgstr "Rehacer"
 #, fuzzy
 msgid "Redo Typing"
 msgstr "Rehacer escritura"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Redo {what}"
-msgstr "Rehacer {what}"
 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
@@ -8215,7 +8209,7 @@ msgid "Search Suggestions"
 msgstr "Sugerencias de búsqueda"
 
 #. interface
-#: crates/ui-egui/src/ribbon.rs
+#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Search commands"
 msgstr "Buscar comandos"
@@ -8509,8 +8503,8 @@ msgstr ""
 "Enviar y recibir\n"
 "todas las carpetas"
 
-#. command label, interface
-#: crates/engine/src/cmd/account.rs crates/ui-egui/src/chrome.rs crates/ui-egui/src/lib.rs
+#. command label, ribbon
+#: crates/engine/src/cmd/account.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Send/Receive All Folders"
 msgstr "Enviar y recibir todas las carpetas"
@@ -8568,7 +8562,7 @@ msgid "Sending"
 msgstr "Enviando"
 
 #. interface
-#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
+#: crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
 #, fuzzy
 msgid "Sending and receiving…"
 msgstr "Enviando y recibiendo…"
@@ -8773,8 +8767,8 @@ msgstr "Mostrar colaboradores"
 msgid "Show Only This Calendar"
 msgstr "Mostrar solo este calendario"
 
-#. command label, interface
-#: crates/ui-egui/src/lib.rs crates/ui-egui/src/nav.rs
+#. command label
+#: crates/ui-egui/src/lib.rs
 #, fuzzy
 msgid "Show Outlook's Favorites"
 msgstr "Mostrar los Favoritos de Outlook"
@@ -9061,7 +9055,7 @@ msgid "Sign in to {owner} first (Send/Receive), then add the shared mailbox."
 msgstr "Inicie sesión primero en {owner} (Enviar y recibir) y después agregue el buzón compartido."
 
 #. interface
-#: crates/ui-egui/src/favorites_sync.rs crates/ui-egui/src/nav.rs
+#: crates/ui-egui/src/favorites_sync.rs
 #, fuzzy
 msgid "Sign in with Microsoft once more to let MailCraft read the folders you keep under Favorites in Outlook. They are only read, never changed, and everything else stays as it is."
 msgstr "Inicie sesión con Microsoft una vez más para que MailCraft pueda leer las carpetas que tiene en Favoritos en Outlook. Solo se leen, nunca se cambian, y todo lo demás queda como está."
@@ -11519,8 +11513,8 @@ msgstr "Escriba su dirección de correo electrónico y MailCraft encuentra el re
 msgid "Underline"
 msgstr "Subrayado"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Undo"
 msgstr "Deshacer"
@@ -11530,12 +11524,6 @@ msgstr "Deshacer"
 #, fuzzy
 msgid "Undo Typing"
 msgstr "Deshacer escritura"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Undo {what}"
-msgstr "Deshacer {what}"
 
 #. interface, name
 #: crates/engine/src/session.rs crates/ui-egui/src/advanced_search.rs crates/ui-egui/src/folder_properties.rs
@@ -14961,6 +14949,14 @@ msgstr "«{subject}» era demasiado grande para descargarlo: solo está aquí su
 #, fuzzy
 msgid "“{subject}” wasn't found on its server, so it can't be forwarded as an attachment"
 msgstr "«{subject}» no se encontró en su servidor, así que no se puede reenviar como datos adjuntos"
+
+#, fuzzy
+#~ msgid "Redo {what}"
+#~ msgstr "Rehacer {what}"
+
+#, fuzzy
+#~ msgid "Undo {what}"
+#~ msgstr "Deshacer {what}"
 
 #, fuzzy
 #~ msgid "A web address, an email address or a phone number (tel:). With nothing selected, the address is put in as it is."

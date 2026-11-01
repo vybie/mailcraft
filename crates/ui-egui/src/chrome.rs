@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: MailCraft contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Title bar (Quick Access Toolbar, search, account) and status bar.
+//! Search, account controls, and status bar.
 
 use egui::{Align2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use mailcraft_engine::{Module, Pane, Scope};
@@ -8,23 +8,6 @@ use serde_json::json;
 
 use crate::theme::{Tokens, TypeRung, medium, regular, semibold, text_width};
 use crate::{MailApp, icons};
-
-fn qat_button(ui: &mut Ui, app: &mut MailApp, icon: &str, tip: &str, id: &str) -> egui::Response {
-    let t = Tokens::get(ui.ctx());
-    let enabled = app.enabled(id);
-    let (r, resp) = ui.allocate_exact_size(vec2(QAT_BUTTON, QAT_BUTTON.min(ui.available_height())), Sense::click());
-    if resp.hovered() && enabled {
-        ui.painter().rect_filled(r, 4.0, if resp.is_pointer_button_down_on() { t.pressed } else { t.hover });
-    }
-    let c = if enabled { t.icon } else { t.text_disabled };
-    icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(16.0, 16.0)), icon, c, if enabled { t.accent } else { c });
-    let sc = crate::widgets::shortcut_text(app, if id == "ui.sync" { "sync.request" } else { id });
-    let resp = resp.on_hover_text(if sc.is_empty() { tip.to_string() } else { format!("{tip} ({sc})") });
-    if resp.clicked() && enabled {
-        let _ = app.run(id, json!({}));
-    }
-    resp
-}
 
 /// "Copy Diagnostics", beside the window's own buttons, so a tester finds it (D1): the same command
 /// as Help › Copy Diagnostics.
@@ -64,11 +47,8 @@ fn pill(ui: &mut Ui, app: &mut MailApp, h: f32, icon: &str, label: &str, tip: &s
     }
 }
 
-/// The title row: its height, the height of the search box in it, and the side of a quick button
-/// (the buttons stand 30 apart, their icons 16 across).
-pub const TITLE_BAR: f32 = 48.0;
-const SEARCH_BOX: f32 = 34.0;
-const QAT_BUTTON: f32 = 28.0;
+/// The search box fits within the tab strip.
+const SEARCH_BOX: f32 = 26.0;
 
 /// Height of the macOS integrated title bar: AppKit draws the traffic lights itself, centred in
 /// the standard 28 pt band at the top of the window, so the title bar is that band.
@@ -313,9 +293,9 @@ pub fn title_bar(app: &mut MailApp, ui: &mut Ui) {
     let mac = app.integrated_titlebar;
     // The first button stands over the module bar's icons.
     let left = if mac { MAC_CONTENT_LEFT as i8 } else { 10 };
-    let (search_h, avatar_h) = if mac { (22.0, 22.0) } else { (SEARCH_BOX, 30.0) };
+    let (search_h, avatar_h) = (22.0, 22.0);
     egui::Panel::top("title_bar")
-        .exact_size(if mac { MAC_TITLE_BAR } else { TITLE_BAR })
+        .exact_size(MAC_TITLE_BAR)
         // One colour with the tabs under it, and no line between the two.
         .show_separator_line(false)
         .frame(egui::Frame::NONE.fill(t.title_bar).inner_margin(egui::Margin { left, right: 10, top: 0, bottom: 0 }))
@@ -330,49 +310,53 @@ pub fn title_bar(app: &mut MailApp, ui: &mut Ui) {
                 let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
             }
-            let mut qat_end = full.min.x;
-            let mut right_start = full.max.x;
-            ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
-                // Quick Access Toolbar: Send/Receive, Undo, Redo.
-                let sync_tip = if app.syncing() { tl!("Sending and receiving…") } else { tl!("Send/Receive All Folders") };
-                qat_button(ui, app, "sync", sync_tip, "ui.sync");
-                let undo = crate::i18n::fmt(tl!("Undo {what}"), &[("what", tl!(app.session.undo_label().unwrap_or("")))]);
-                qat_button(ui, app, "undo", undo.trim(), "edit.undo");
-                let redo = crate::i18n::fmt(tl!("Redo {what}"), &[("what", tl!(app.session.redo_label().unwrap_or("")))]);
-                qat_button(ui, app, "redo", redo.trim(), "edit.redo");
-                qat_end = ui.min_rect().max.x;
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // The account in use.
-                    let me = app
-                        .session
-                        .mailbox
-                        .folder(app.session.view.folder)
-                        .and_then(|f| app.session.mailbox.account(f.account))
-                        .or(app.session.mailbox.default_account());
-                    let address = me.map(|a| a.address()).unwrap_or_default();
-                    let (r, resp) = ui.allocate_exact_size(vec2(avatar_h, avatar_h), Sense::click());
-                    crate::widgets::avatar(ui, r.center(), avatar_h / 2.0 - 1.0, &address);
-                    let tip = if address.email.is_empty() { tl!("No account yet: File › Add Account").to_string() } else { address.full() };
-                    if resp.on_hover_text(tip).clicked() {
-                        let _ = app.run("ui.backstage", json!({"value": true, "page": "info"}));
-                    }
-                    ui.add_space(8.0);
-                    diagnostics_pill(ui, app, avatar_h.min(26.0));
-                    ui.add_space(4.0);
-                    report_pill(ui, app, avatar_h.min(26.0));
-                    right_start = ui.min_rect().min.x;
-                });
-            });
-            // The search box, centred, as wide as the space allows.
-            let room = (right_start - qat_end - 40.0).max(0.0);
-            let w = room.min(520.0);
-            app.search_box_shown = w >= 220.0;
-            if w >= 220.0 {
-                let cx = full.center().x.clamp(qat_end + 20.0 + w / 2.0, (right_start - 20.0 - w / 2.0).max(qat_end + 20.0 + w / 2.0));
-                search_box(app, ui, Rect::from_center_size(pos2(cx, full.center().y), vec2(w, search_h)));
-            }
+            title_controls(app, ui, full, full.min.x, avatar_h, search_h);
         });
+}
+
+/// The controls share the tab row on windows with a native title bar. On macOS they occupy the
+/// integrated title bar, which must remain available for the system's window controls and dragging.
+pub(crate) fn title_controls(app: &mut MailApp, ui: &mut Ui, full: Rect, left_end: f32, avatar_h: f32, search_h: f32) {
+    let mut right_start = full.max.x;
+    ui.scope_builder(egui::UiBuilder::new().max_rect(full), |ui| {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let me = app
+                .session
+                .mailbox
+                .folder(app.session.view.folder)
+                .and_then(|f| app.session.mailbox.account(f.account))
+                .or(app.session.mailbox.default_account());
+            let address = me.map(|a| a.address()).unwrap_or_default();
+            let (r, resp) = ui.allocate_exact_size(vec2(avatar_h, avatar_h), Sense::click());
+            crate::widgets::avatar(ui, r.center(), avatar_h / 2.0 - 1.0, &address);
+            let tip = if address.email.is_empty() { tl!("No account yet: File › Add Account").to_string() } else { address.full() };
+            if resp.on_hover_text(tip).clicked() {
+                let _ = app.run("ui.backstage", json!({"value": true, "page": "info"}));
+            }
+            if !app.integrated_titlebar && crate::widgets::icon_button(ui, "search", tl!("Search commands"), 18.0, true).clicked() {
+                let _ = app.run("ui.dialog", json!({"name": "commands"}));
+            }
+            // Both actions remain in Help when the window is too narrow for their pills.
+            if full.max.x - left_end >= 800.0 {
+                ui.add_space(8.0);
+                diagnostics_pill(ui, app, avatar_h.min(26.0));
+                ui.add_space(4.0);
+                report_pill(ui, app, avatar_h.min(26.0));
+            }
+            right_start = ui.min_rect().min.x;
+        });
+    });
+    let room = (right_start - left_end - 20.0).max(0.0);
+    let w = room.min(520.0);
+    app.search_box_shown = w >= 220.0;
+    if app.search_box_shown {
+        let cx = full.center().x.clamp(left_end + 10.0 + w / 2.0, (right_start - 10.0 - w / 2.0).max(left_end + 10.0 + w / 2.0));
+        search_box(app, ui, Rect::from_center_size(pos2(cx, full.center().y), vec2(w, search_h)));
+    }
+}
+
+pub(crate) fn tab_controls(app: &mut MailApp, ui: &mut Ui, full: Rect, left_end: f32) {
+    title_controls(app, ui, full, left_end, 24.0, SEARCH_BOX);
 }
 
 /// How tall the status bar is.

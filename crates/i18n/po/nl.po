@@ -7666,8 +7666,8 @@ msgstr "Recente e-mail"
 msgid "Recurrence"
 msgstr "Terugkeerpatroon"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Redo"
 msgstr "Opnieuw"
@@ -7677,12 +7677,6 @@ msgstr "Opnieuw"
 #, fuzzy
 msgid "Redo Typing"
 msgstr "Typen opnieuw"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Redo {what}"
-msgstr "{what} opnieuw"
 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
@@ -8463,7 +8457,7 @@ msgid "Search Suggestions"
 msgstr "Zoeksuggesties"
 
 #. interface
-#: crates/ui-egui/src/ribbon.rs
+#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Search commands"
 msgstr "Opdrachten zoeken"
@@ -8766,8 +8760,8 @@ msgstr ""
 "Verzenden/ontvangen\n"
 "alle mappen"
 
-#. command label, interface
-#: crates/engine/src/cmd/account.rs crates/ui-egui/src/chrome.rs crates/ui-egui/src/lib.rs
+#. command label, ribbon
+#: crates/engine/src/cmd/account.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Send/Receive All Folders"
 msgstr "Verzenden/ontvangen alle mappen"
@@ -8826,7 +8820,7 @@ msgid "Sending"
 msgstr "Bezig met verzenden"
 
 #. interface
-#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
+#: crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
 #, fuzzy
 msgid "Sending and receiving…"
 msgstr "Bezig met verzenden en ontvangen…"
@@ -9036,8 +9030,8 @@ msgstr "Bijdragers weergeven"
 msgid "Show Only This Calendar"
 msgstr "Alleen deze agenda weergeven"
 
-#. command label, interface
-#: crates/ui-egui/src/lib.rs crates/ui-egui/src/nav.rs
+#. command label
+#: crates/ui-egui/src/lib.rs
 #, fuzzy
 msgid "Show Outlook's Favorites"
 msgstr "Favorieten van Outlook weergeven"
@@ -9333,7 +9327,7 @@ msgid "Sign in to {owner} first (Send/Receive), then add the shared mailbox."
 msgstr "Meld u eerst aan bij {owner} (Verzenden/ontvangen) en voeg daarna het gedeelde postvak toe."
 
 #. interface
-#: crates/ui-egui/src/favorites_sync.rs crates/ui-egui/src/nav.rs
+#: crates/ui-egui/src/favorites_sync.rs
 #, fuzzy
 msgid "Sign in with Microsoft once more to let MailCraft read the folders you keep under Favorites in Outlook. They are only read, never changed, and everything else stays as it is."
 msgstr "Meld u nog een keer aan met Microsoft zodat MailCraft de mappen mag lezen die u in Outlook onder Favorieten bewaart. Ze worden alleen gelezen, nooit gewijzigd, en al het overige blijft zoals het is."
@@ -11912,8 +11906,8 @@ msgstr "Typ uw e-mailadres en MailCraft zoekt de rest: Microsoft 365, Outlook.co
 msgid "Underline"
 msgstr "Onderstrepen"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Undo"
 msgstr "Ongedaan maken"
@@ -11923,12 +11917,6 @@ msgstr "Ongedaan maken"
 #, fuzzy
 msgid "Undo Typing"
 msgstr "Typen ongedaan maken"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Undo {what}"
-msgstr "{what} ongedaan maken"
 
 #. interface, name
 #: crates/engine/src/session.rs crates/ui-egui/src/advanced_search.rs crates/ui-egui/src/folder_properties.rs
@@ -15449,6 +15437,14 @@ msgstr "„{subject}” was te groot om te downloaden: alleen de koptekst is hie
 #, fuzzy
 msgid "“{subject}” wasn't found on its server, so it can't be forwarded as an attachment"
 msgstr "„{subject}” is niet op de server gevonden, dus het kan niet als bijlage worden doorgestuurd"
+
+#, fuzzy
+#~ msgid "Redo {what}"
+#~ msgstr "{what} opnieuw"
+
+#, fuzzy
+#~ msgid "Undo {what}"
+#~ msgstr "{what} ongedaan maken"
 
 #, fuzzy
 #~ msgid "A web address, an email address or a phone number (tel:). With nothing selected, the address is put in as it is."

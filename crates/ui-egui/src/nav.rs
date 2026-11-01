@@ -204,7 +204,8 @@ fn highlight(r: Rect) -> Rect {
 fn heading(app: &mut MailApp, ui: &mut Ui, id: Id, name: &str, height: f32, text_y: f32, ruled: bool) -> bool {
     let t = Tokens::get(ui.ctx());
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
-    let resp = ui.interact(r, ui.scope_id().with(("heading", id)), Sense::click());
+    let hit = if ruled { r } else { Rect::from_min_max(r.min, pos2((r.max.x - 30.0).max(r.min.x), r.max.y)) };
+    let resp = ui.interact(hit, ui.scope_id().with(("heading", id)), Sense::click());
     app.hit.add("folderHeading", id, r);
     if ruled {
         let y = r.min.y + 9.5;
@@ -213,7 +214,7 @@ fn heading(app: &mut MailApp, ui: &mut Ui, id: Id, name: &str, height: f32, text
     let open = !app.ui.collapsed_folders.contains(&id);
     let y = r.min.y + text_y;
     chevron(ui.painter(), pos2(r.min.x + CHEVRON_X, y + 2.0), HEADING_CHEVRON, open, if resp.hovered() { t.accent_text } else { t.text });
-    paint_clipped(ui.painter(), pos2(r.min.x + NAME_LEFT, y), (r.width() - NAME_LEFT - 8.0).max(0.0), name, regular(HEADING_SIZE), t.text);
+    paint_clipped(ui.painter(), pos2(r.min.x + NAME_LEFT, y), (hit.width() - NAME_LEFT - 8.0).max(0.0), name, regular(HEADING_SIZE), t.text);
     if resp.clicked() {
         let _ = app.execute("ui.toggleFolder", json!({"id": id}));
     }
@@ -386,24 +387,8 @@ fn favorites_note(app: &mut MailApp, ui: &mut Ui, account: Id, note: &Note) {
     let width = (r.max.x - COUNT_RIGHT - left).max(0.0);
     let font = regular(NAME_SIZE);
     match note {
-        // The whole line is the offer.
-        Note::Offer => {
-            let resp = ui.interact(highlight(r), ui.scope_id().with(("favorites_offer", account)), Sense::click());
-            app.hit.add("favoritesOffer", account, r);
-            if resp.hovered() {
-                ui.painter().rect_filled(highlight(r), 0.0, t.panel.lerp_to_gamma(t.hover, 0.7));
-            }
-            paint_clipped(ui.painter(), pos2(left, y), width, tl!("Show Outlook's Favorites"), font, t.accent_text);
-            // Signing in with Microsoft once more, for that alone.
-            let about = tl!(
-                "Sign in with Microsoft once more to let MailCraft read the folders you keep under Favorites in Outlook. They are only read, never changed, and everything else stays as it is."
-            );
-            if resp.on_hover_text(about).clicked()
-                && let Err(e) = app.run("ui.connectFavorites", json!({"account": account}))
-            {
-                app.status(e);
-            }
-        }
+        // The offer is available in File › Options, not in the folder pane.
+        Note::Offer => {}
         // (Said above, in more than a row.)
         Note::Approval => {}
         Note::Refused(why) => {
@@ -455,7 +440,7 @@ fn sheet(painter: &Painter, r: Rect, t: &Tokens) {
 fn pane_top(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
     // The line along the pane's top, and a little air under it.
     ui.add_space(4.0);
-    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
+    let r = Rect::from_min_size(ui.available_rect_before_wrap().min, vec2(ui.available_width(), ROW_H));
     let button = Rect::from_center_size(pos2(r.max.x - 14.0, r.center().y), vec2(20.0, 20.0));
     let resp = ui.interact(button, ui.scope_id().with("hide_pane"), Sense::click());
     if resp.hovered() {
@@ -521,7 +506,7 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
             let favorites: Vec<Folder> =
                 mailcraft_engine::cmd::folder::favorites(&app.session).into_iter().filter_map(|id| app.session.mailbox.folder(id).cloned()).collect();
             // And what there is to say of Outlook's, in one quiet line under the heading.
-            let note = app.favorites_note();
+            let note = app.favorites_note().filter(|(_, note)| !matches!(note, Note::Offer));
             // (A shared mailbox right after the account it is opened through, #70.)
             // (The folders are grouped by account once, not once for each account.)
             let mut trees = trees(&app.session.mailbox, |a| !folded.contains(&a));
@@ -958,6 +943,8 @@ mod tests {
         assert!(shown(&harness) && harness.state().hit.rect("folderPaneShow", 0).is_none());
         let wide = harness.state().hit.rect("folderHeading", FAVORITES).unwrap().width();
         let hide = harness.state().hit.rect("folderPaneHide", 0).unwrap();
+        let heading = harness.state().hit.rect("folderHeading", FAVORITES).unwrap();
+        assert!(heading.contains(hide.center()), "the first heading shares the top row with the hide button");
         click(&mut harness, hide.center());
         assert!(!shown(&harness));
         assert!(harness.state().hit.rect("folder", inbox).is_none() && harness.state().hit.rect("folderPaneHide", 0).is_none());

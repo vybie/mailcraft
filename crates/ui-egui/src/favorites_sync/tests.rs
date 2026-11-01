@@ -518,27 +518,20 @@ fn the_pane_lists_outlooks_favorites_in_their_order_under_the_heading() {
 }
 
 #[test]
-fn the_offer_is_one_line_under_the_heading_and_in_the_options() {
+fn the_offer_is_in_options_and_does_not_take_a_folder_pane_row() {
     let mut rig = Rig::new();
     rig.host.lock().unwrap().unconsented = true;
     rig.app.graph_tokens.clear();
     rig.look(0.0);
     let own = favorites(&rig.app.session);
-    let (mut harness, host, [account, inbox, ..]) = window(rig);
+    let (harness, host, [account, ..]) = window(rig);
     let at = |h: &egui_kittest::Harness<'static, MailApp>, kind: &str, id: Id| h.state().hit.rect(kind, id);
-    // One row under the Favorites heading, above the owner's own favourites, which are all there.
+    // The offer takes no room in the folder pane; the owner's favourites follow the heading.
     let heading = at(&harness, "folderHeading", 0).unwrap();
-    let offer = at(&harness, "favoritesOffer", account).expect("the offer");
-    assert!((offer.min.y - heading.max.y).abs() < 0.5 && (offer.height() - 24.0).abs() < 0.01);
-    assert!(at(&harness, "folder", inbox).is_some_and(|row| row.min.y >= offer.max.y - 0.5));
-    assert_eq!(favorites(&harness.state().session), own);
-    // A click asks for the two permissions on the provider's page, and for nothing by itself.
-    assert!(host.lock().unwrap().sign_ins.is_empty());
-    host.lock().unwrap().unconsented = false;
-    click(&mut harness, offer.center());
-    harness.run_steps(6);
-    assert_eq!(host.lock().unwrap().sign_ins, [(true, true)]);
     assert!(at(&harness, "favoritesOffer", account).is_none());
+    assert!(own.first().and_then(|id| at(&harness, "folder", *id)).is_some_and(|row| (row.min.y - heading.max.y).abs() < 0.5));
+    assert_eq!(favorites(&harness.state().session), own);
+    assert!(host.lock().unwrap().sign_ins.is_empty());
 
     // File › Options: the switch, and the same offer while it stands.
     let mut rig = Rig::new();
@@ -724,9 +717,8 @@ fn what_stands_in_the_way_is_a_sentence_under_the_heading_with_a_row_for_each_th
     let at = |h: &egui_kittest::Harness<'static, MailApp>, kind: &str, id: Id| h.state().hit.rect(kind, id);
     // The offer asks for Graph's two permissions on the provider's page, for an organisation's
     // account as for any other: no dialog, no choice.
-    let offer = at(&harness, "favoritesOffer", account).expect("the offer");
     host.lock().unwrap().sign_in_error = Some(NEEDS_APPROVAL.to_string());
-    click(&mut harness, offer.center());
+    harness.state_mut().run("ui.connectFavorites", json!({"account": account})).unwrap();
     harness.run_steps(6);
     assert!(harness.state().dialog.is_none());
     assert_eq!(host.lock().unwrap().sign_ins, [(true, true)]);

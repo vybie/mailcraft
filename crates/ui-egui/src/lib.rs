@@ -4225,7 +4225,9 @@ impl MailApp {
         } else {
             // The module bar stands beside the tabs and the ribbon, from under the title bar down
             // to the status bar across the window's foot: both are laid out before the ribbon.
-            chrome::title_bar(self, ui);
+            if self.integrated_titlebar {
+                chrome::title_bar(self, ui);
+            }
             chrome::sync_bar_rest(self, ui.ctx());
             chrome::status_bar(self, ui);
             // The question about checking for new versions, at the first starts: above the status bar.

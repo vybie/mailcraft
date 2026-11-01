@@ -301,7 +301,7 @@ impl Tab {
 
 /// The tab in view, as the window stands.
 pub(crate) fn describe(app: &MailApp) -> Tab {
-    match app.ui.tab.as_str() {
+    let mut tab = match app.ui.tab.as_str() {
         "Message" => message(app),
         "Insert" => insert(),
         "Review" => review(),
@@ -315,7 +315,18 @@ pub(crate) fn describe(app: &MailApp) -> Tab {
             Module::People => home_people(app),
             Module::Tasks => home_tasks(app),
         },
+    };
+    if app.ui.tab == "Home" {
+        tab.groups.push(g(
+            "Actions",
+            vec![
+                Item::small("sync", "Send/Receive", "Send/Receive All Folders", "ui.sync", no()).at(6, 4),
+                Item::small("undo", "Undo", "", "edit.undo", no()).at(6, 4).plain(),
+                Item::small("redo", "Redo", "", "edit.redo", no()).at(6, 4).plain(),
+            ],
+        ));
     }
+    tab
 }
 
 fn no() -> Value {
@@ -378,7 +389,6 @@ fn home_mail(app: &MailApp) -> Tab {
                 Item::small("findFromSender", "From Sender", "Messages from Sender", "mail.findFromSender", no()).at(5, 7),
             ],
         ),
-        g("Send/Receive", vec![Item::big("sync", "Send/Receive\nAll Folders", "ui.sync", no()).at(5, 5)]),
     ])
 }
 
@@ -1769,6 +1779,8 @@ pub fn show(app: &mut MailApp, ui: &mut Ui) {
         .show_separator_line(false)
         .frame(egui::Frame::NONE.fill(t.tab_strip).inner_margin(egui::Margin { left: 3, right: 10, top: 0, bottom: 0 }))
         .show(ui, |ui| {
+            let full = ui.max_rect();
+            let mut tabs_end = full.min.x;
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
                 for tab in &tabs {
@@ -1797,13 +1809,19 @@ pub fn show(app: &mut MailApp, ui: &mut Ui) {
                         let _ = app.run("ui.collapseRibbon", json!({}));
                     }
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Search every command by name ("Tell me").
-                    if crate::widgets::icon_text_button(ui, "search", tl!("Search commands"), true).clicked() {
-                        let _ = app.run("ui.dialog", json!({"name": "commands"}));
-                    }
-                });
+                tabs_end = ui.min_rect().max.x;
+                if app.integrated_titlebar {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Search every command by name ("Tell me").
+                        if crate::widgets::icon_text_button(ui, "search", tl!("Search commands"), true).clicked() {
+                            let _ = app.run("ui.dialog", json!({"name": "commands"}));
+                        }
+                    });
+                }
             });
+            if !app.integrated_titlebar {
+                crate::chrome::tab_controls(app, ui, full, tabs_end);
+            }
         });
     if app.ui.ribbon_collapsed {
         return;
@@ -2096,7 +2114,8 @@ mod tests {
         let tab = describe(&a);
         let sections: Vec<(&str, u8)> = row(&tab).iter().map(|b| (b.item.key, b.item.section)).filter(|(_, section)| *section >= 3).collect();
         assert_eq!(sections.first().copied(), Some(("calendar.edit", 3)));
-        assert_eq!(sections.last().copied(), Some(("file.exportCalendar", 5)));
+        assert!(sections.contains(&("file.exportCalendar", 5)));
+        assert_eq!(&sections[sections.len() - 3..], &[("ui.sync", 6), ("edit.undo", 6), ("edit.redo", 6)]);
         a.execute("calendar.select", json!({"id": null})).unwrap();
         // The View tab has the calendar's time scale while the calendar is in front.
         a.execute("ui.tab", json!({"tab": "View"})).unwrap();
@@ -2490,7 +2509,7 @@ mod tests {
                 }
             }
         }
-        // Mail › Home, group by group, as the classic ribbon has always had it.
+        // Mail › Home, group by group in the classic ribbon.
         let a = app();
         let tab = describe(&a);
         let groups: Vec<(&str, Vec<&str>)> =
@@ -2504,7 +2523,7 @@ mod tests {
                 ("Move", vec!["Move", "Rules"]),
                 ("Tags", vec!["Unread/\nRead", "Categorize", "Follow\nUp", "Pin"]),
                 ("Find", vec!["Filter\nEmail", "Related", "From Sender"]),
-                ("Send/Receive", vec!["Send/Receive\nAll Folders"]),
+                ("Actions", vec!["Send/Receive", "Undo", "Redo"]),
             ]
         );
     }

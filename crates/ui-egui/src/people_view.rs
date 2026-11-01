@@ -1297,14 +1297,16 @@ mod tests {
         w.state_mut().dialog = None;
         w.step();
 
+        // Return to the top before pointing at a row: opening the contact may scroll the list.
+        testing::key(&mut w, Key::Home);
         // A right click selects the row under the pointer and opens its menu, which keeps the keys.
-        let pos = at(&w, ids[0]);
+        let pos = at(&w, ids[1]);
         testing::click(&mut w, pos, PointerButton::Secondary, 1);
-        assert_eq!(selected(&w), Some(ids[0]));
+        assert_eq!(selected(&w), Some(ids[1]));
         let ctx = w.state().ctx.clone().unwrap();
         assert!(egui::Popup::is_any_open(&ctx));
         testing::key(&mut w, Key::ArrowDown);
-        assert_eq!(selected(&w), Some(ids[0]));
+        assert_eq!(selected(&w), Some(ids[1]));
     }
 
     #[test]

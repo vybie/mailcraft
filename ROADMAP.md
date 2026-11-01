@@ -2,7 +2,7 @@
 
 **Stage: public beta** (0.8.0, 2026-10-24) · next: leaving beta, when every item of [the beta checklist](#the-beta-checklist) passes
 
-> **Last reviewed:** 2026-10-20 · **Last updated:** 2026-10-30 · **Change:** minor · **Target:** Microsoft Outlook (Microsoft 365, classic desktop)
+> **Last reviewed:** 2026-10-20 · **Last updated:** 2026-10-31 · **Change:** patch · **Target:** Microsoft Outlook (Microsoft 365, classic desktop)
 
 MailCraft aims for complete parity with Microsoft Outlook, then goes further on speed, openness,
 privacy and agent control. This page is the direction: where MailCraft stands, what beta must
@@ -542,3 +542,5 @@ follows:
 | 2026-10-29 | #252 E4 review: Exchange sync states are bound to their pages and a state is kept only after the page it followed (progress log) |
 | 2026-10-29 | #252 E4 second review: a blocked Exchange folder is named and blocks only itself; a lost page keeps the end of its run from sweeping (progress log) |
 | 2026-10-29 | #252 E3 review: the sign-in goes only in answer to a Basic challenge; Microsoft's consumer mail is refused up front (progress log) |
+
+| 2026-10-31 | Home ribbon: Send/Receive, Undo and Redo move from the separate toolbar; search and account controls share the tab row |
