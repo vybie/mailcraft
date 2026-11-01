@@ -10,7 +10,7 @@
 //!   `ActionInvoked` for the alert's default action, where the service has actions. The body is
 //!   escaped where the service reads markup in it, so that what a message says is shown as text
 //!   and nothing in it is fetched. No service: Options says so.
-//! - **Windows**: toasts (`Windows.UI.Notifications`), for the AppUserModelID `MailCraft.MailCraft`
+//! - **Windows**: toasts (`Windows.UI.Notifications`), for the AppUserModelID `MailCraft.Desktop`
 //!   registered on its Start menu shortcut. Windows requires that shortcut for desktop toasts.
 //!   The text goes into the toast's XML as text nodes, never as markup. A click while MailCraft
 //!   runs comes back through the toast's `Activated`. (The process doesn't declare the id itself:
@@ -297,9 +297,8 @@ mod toasts {
 
     use super::{Clicks, drain};
 
-    /// What the `.msi`'s Start menu shortcut tells Windows the program is (its
-    /// `System.AppUserModel.ID`, `packaging/windows/mailcraft.wxs`).
-    pub const APP_ID: &str = "MailCraft.MailCraft";
+    /// The personal build's registered notification identity.
+    pub const APP_ID: &str = "MailCraft.Desktop";
     /// How many toasts are kept, so that a click on one is still heard.
     const KEPT: usize = 50;
 
