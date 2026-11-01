@@ -521,6 +521,44 @@ fn too_many_pictures_and_too_large_ones_are_stand_ins() {
     });
 }
 
+/// A receipt's percentage-width inner grid stays inside its fixed-width wrapper cell.
+#[test]
+fn nested_receipt_tables_respect_the_width_of_their_wrapper_cell() {
+    for inner in [568, 578] {
+        let html = format!(
+            "<table role='presentation' width='612' style='table-layout:fixed' cellspacing='0'><tr><td style='padding:0'>\
+             <table role='presentation' cellspacing='0'><tr><td width='{inner}' style='padding:0'>\
+             <table role='presentation' width='100%' cellspacing='0'><tr>\
+             <td height='36' style='padding:0'>Item</td><td height='36' align='right' bgcolor='#e4f0ff' style='padding:0'>Amount</td>\
+             </tr></table></td></tr></table></td></tr></table>"
+        );
+        let message = html_message(92, ("Shop", "shop@example.org"), "Receipt", &html);
+        for dark in [false, true] {
+            in_frame(dark, |ctx| {
+                for width in [900.0_f32, 500.0] {
+                    let laid = lay_out(ctx, &message, width);
+                    let (left, right) = (find_exact(&laid, "Item"), find_exact(&laid, "Amount"));
+                    // Every wrapper is left-aligned at x=0, with zero cell padding and spacing.
+                    // The coloured cell gives its actual edge independently of its text alignment.
+                    let cell = laid
+                        .items
+                        .iter()
+                        .find(|item| matches!(item.kind, ItemKind::Fill { .. }) && item.rect.contains(right.rect.center()))
+                        .expect("the Amount cell's background");
+                    let expected = (inner as f32).min(width);
+                    assert!(left.rect.max.x <= cell.rect.min.x + 0.5, "{inner}, {width}: {:?}, {:?}", left.rect, cell.rect);
+                    assert!(
+                        (cell.rect.max.x - expected).abs() < 1.0,
+                        "inner {inner}, pane {width}: cell ends at {}, expected {expected}",
+                        cell.rect.max.x
+                    );
+                    assert!(laid.size.x <= width + 0.5, "inner {inner}, pane {width}: {:?}", laid.size);
+                }
+            });
+        }
+    }
+}
+
 #[test]
 fn a_data_table_keeps_its_columns_and_a_layout_table_gives_way() {
     in_frame(false, |ctx| {

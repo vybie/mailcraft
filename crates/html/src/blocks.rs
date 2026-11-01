@@ -1489,7 +1489,11 @@ impl Builder {
             && !matches!(table.width, Some(Length::Px(_)));
         let picture = |cell: &Cell| !cell.blocks.is_empty() && cell.blocks.iter().all(|b| matches!(b.kind, BlockKind::Image { .. }));
         let slices = rows.len() >= 2 && rows.iter().all(|r| r.cells.iter().all(picture));
-        if layout && plain && !slices && rows.iter().all(|r| r.cells.len() == 1 && r.cells.iter().all(|c| c.background.is_none() && !c.border.any()))
+        // Flattening would discard a width carried by the wrapping cell.
+        if layout
+            && plain
+            && !slices
+            && rows.iter().all(|r| r.cells.len() == 1 && r.cells.iter().all(|c| c.background.is_none() && !c.border.any() && c.width.is_none()))
         {
             for (i, row) in rows.into_iter().enumerate() {
                 for mut cell in row.cells {
@@ -2455,3 +2459,7 @@ pub(crate) fn block_name(name: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "blocks/receipt_tests.rs"]
+mod receipt_tests;
