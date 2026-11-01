@@ -88,6 +88,10 @@ mod system_locale;
 mod tasks_job_tests;
 #[cfg(test)]
 mod token_renew_flow;
+#[cfg(target_os = "windows")]
+mod tray;
+#[cfg(any(target_os = "windows", test))]
+mod tray_state;
 #[cfg(test)]
 mod unconfirmed_flow;
 #[cfg(test)]
@@ -118,6 +122,7 @@ struct App(
     Option<HostUpdates>,
     #[cfg(target_os = "macos")] fmv_macos_events::Inbox,
     #[cfg(target_os = "macos")] Option<menubar::MenuBar>,
+    #[cfg(target_os = "windows")] Option<tray::Tray>,
 );
 
 /// A copy that updates itself (`self_update`): where it keeps what it needs, what it is, and what
@@ -156,6 +161,11 @@ impl eframe::App for App {
                 self.0.open_from_system(what);
             }
             self.0.note_left_alone(asked.refused);
+            #[cfg(target_os = "windows")]
+            if let Some(tray) = &mut self.6 {
+                tray.show(ctx);
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             // Where the system won't let a window step in front by itself, its button says so.
@@ -165,6 +175,10 @@ impl eframe::App for App {
         #[cfg(target_os = "macos")]
         if let Some(bar) = &mut self.7 {
             bar.pump(&mut self.0, ctx);
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(tray) = &mut self.6 {
+            tray.pump(ctx, &mut self.0);
         }
         self.0.logic(ctx);
         self.3.show(frame);
@@ -177,7 +191,17 @@ impl eframe::App for App {
         open_pages(ctx, frame);
         // Leaving (the close button, Quit, the Dock): a message being written asks first, then
         // the platform's own way out (`quit`). Last in `logic`, which runs while minimized too.
-        quit::on_frame(ctx, &mut self.0);
+        #[cfg(target_os = "windows")]
+        let hidden = self.6.as_mut().is_some_and(|tray| tray.before_quit(ctx, &self.0));
+        #[cfg(not(target_os = "windows"))]
+        let hidden = false;
+        if !hidden {
+            quit::on_frame(ctx, &mut self.0);
+            #[cfg(target_os = "windows")]
+            if let Some(tray) = &mut self.6 {
+                tray.after_quit(&self.0);
+            }
+        }
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         // On Linux and the BSDs, the desktop's light or dark preference (`desktop_theme`), for
@@ -1980,6 +2004,8 @@ fn main() -> eframe::Result {
                 dialogs,
                 guard,
                 updates,
+                #[cfg(target_os = "windows")]
+                tray::Tray::new(&cc.egui_ctx, app_icon()),
                 #[cfg(target_os = "macos")]
                 apple_events.connect(&cc.egui_ctx),
                 #[cfg(target_os = "macos")]
