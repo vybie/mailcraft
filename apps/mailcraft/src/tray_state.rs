@@ -25,10 +25,6 @@ impl TrayState {
         ctx.send_viewport_cmd(ViewportCommand::Focus);
     }
 
-    pub(crate) fn needs_tray_check(&self, ctx: &Context) -> bool {
-        self.hidden || ctx.input(|i| i.viewport().close_requested())
-    }
-
     pub(crate) fn after_quit(&mut self, app: &MailApp) {
         if app.quit_in_progress() {
             self.explicit_close = true;
@@ -37,7 +33,7 @@ impl TrayState {
     }
 
     /// Return true when close was handled by minimizing the running window.
-    pub(crate) fn before_quit(&mut self, ctx: &Context, app: &MailApp, available: bool) -> bool {
+    pub(crate) fn before_quit(&mut self, ctx: &Context, app: &MailApp) -> bool {
         // An alert or another host path may already have brought the window back.
         if ctx.viewport(|v| v.commands.contains(&ViewportCommand::Visible(true)))
             || (self.hidden && ctx.input(|i| i.focused && i.viewport().minimized == Some(false)))
@@ -58,12 +54,7 @@ impl TrayState {
             }
         }
         if self.hidden {
-            if !available {
-                // Explorer may have stopped or lost the icon. Never strand the window.
-                self.show(ctx);
-            } else {
-                ctx.request_repaint_after(Duration::from_secs(2));
-            }
+            ctx.request_repaint_after(Duration::from_secs(2));
         }
         if !ctx.input(|i| i.viewport().close_requested()) {
             return false;
@@ -72,9 +63,6 @@ impl TrayState {
             // The shutdown decision is left to quit.rs. If it waits for a prompt or a save,
             // its next `quit_requested` arms the next close; Cancel leaves ordinary X as hide.
             self.explicit_close = false;
-            return false;
-        }
-        if !available {
             return false;
         }
         ctx.send_viewport_cmd(ViewportCommand::CancelClose);

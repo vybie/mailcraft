@@ -145,10 +145,7 @@ impl Tray {
     }
 
     pub(crate) fn before_quit(&mut self, ctx: &Context, app: &MailApp) -> bool {
-        // Creating an icon may succeed even if Explorer has not registered it. Its actual
-        // rectangle is the available test, including after Explorer restarts.
-        let available = !self.state.needs_tray_check(ctx) || self.icon.rect().is_some();
-        self.state.before_quit(ctx, app, available)
+        self.state.before_quit(ctx, app)
     }
 }
 
