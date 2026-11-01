@@ -94,7 +94,8 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 keyring-core = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winit = { version = "0.30", default-features = false }
+raw-window-handle = "0.6"
+mailcraft-windows-badge = { path = "../../crates/windows-badge" }
 # Native notification-area icon and menu, with no Linux or macOS backend.
 tray-icon = { version = "=0.26.1", default-features = false }
 # Windows Credential Manager, for the credential store above.

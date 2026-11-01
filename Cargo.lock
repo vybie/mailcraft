@@ -2233,11 +2233,13 @@ dependencies = [
  "mailcraft-proto",
  "mailcraft-time",
  "mailcraft-ui-egui",
+ "mailcraft-windows-badge",
  "muda",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "objc2-user-notifications 0.3.2",
+ "raw-window-handle",
  "rfd",
  "ring",
  "serde_json",
@@ -2502,6 +2504,13 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "mailcraft-windows-badge"
+version = "0.9.0"
+dependencies = [
+ "windows",
 ]
 
 [[package]]

@@ -6,12 +6,12 @@ use crate::tray_state::TrayState;
 use egui::{Context, IconData};
 use mailcraft_model::FolderKind;
 use mailcraft_ui_egui::{MailApp, i18n};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, sync_channel};
+use std::time::{Duration, Instant};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use winit::platform::windows::WindowExtWindows;
 
 const OPEN: &str = "mailcraft.tray.open";
 const QUIT: &str = "mailcraft.tray.quit";
@@ -32,6 +32,7 @@ pub(crate) struct Tray {
     base_icon: IconData,
     unread: Option<usize>,
     revision: Option<(u64, u64)>,
+    overlay_at: Option<Instant>,
 }
 
 impl Tray {
@@ -77,7 +78,7 @@ impl Tray {
                 wake.request_repaint();
             }
         }));
-        Ok(Self { icon, open, quit, events, lang: i18n::current(), state: TrayState::default(), base_icon: data, unread: None, revision: None })
+        Ok(Self { icon, open, quit, events, lang: i18n::current(), state: TrayState::default(), base_icon: data, unread: None, revision: None, overlay_at: None })
     }
 
     pub(crate) fn is_hidden(&self) -> bool {
@@ -90,31 +91,35 @@ impl Tray {
             return;
         }
         let revision = (app.session.openings(), app.session.rev());
-        if self.revision == Some(revision) {
-            return;
-        }
-        self.revision = Some(revision);
-        let mailbox = &app.session.mailbox;
-        let inboxes: HashSet<_> = mailbox.folders.iter().filter(|f| f.kind == FolderKind::Inbox).map(|f| f.id).collect();
-        let unread = mailbox.messages.values().filter(|m| !m.read && inboxes.contains(&m.folder)).count();
-        if self.unread == Some(unread) {
-            return;
-        }
-        let data = badged_icon(&self.base_icon, unread);
-        if let Ok(icon) = Icon::from_rgba(data.rgba.clone(), data.width, data.height) {
-            if let Err(error) = self.icon.set_icon(Some(icon)) {
-                log::warn!("tray icon: {error}");
+        if self.revision != Some(revision) {
+            self.revision = Some(revision);
+            let mailbox = &app.session.mailbox;
+            let inboxes: HashSet<_> = mailbox.folders.iter().filter(|f| f.kind == FolderKind::Inbox).map(|f| f.id).collect();
+            let unread = mailbox.messages.values().filter(|m| !m.read && inboxes.contains(&m.folder)).count();
+            if self.unread != Some(unread) {
+                let data = if unread == 0 { self.base_icon.clone() } else { badge_icon(unread) };
+                if let Ok(icon) = Icon::from_rgba(data.rgba, data.width, data.height) {
+                    if let Err(error) = self.icon.set_icon(Some(icon)) { log::warn!("tray icon: {error}"); }
+                    let tooltip = if unread == 0 { "MailCraft".to_string() } else { format!("MailCraft — {unread} unread") };
+                    let _ = self.icon.set_tooltip(Some(tooltip));
+                }
+                self.unread = Some(unread);
+                self.overlay_at = None;
             }
-            let tooltip = if unread == 0 { "MailCraft".to_string() } else { format!("MailCraft — {unread} unread") };
-            let _ = self.icon.set_tooltip(Some(tooltip));
-            if let Some(window) = frame.winit_window()
-                && let Ok(icon) = winit::window::Icon::from_rgba(data.rgba.clone(), data.width, data.height)
-            {
-                window.set_taskbar_icon(Some(icon));
-            }
-            ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(Arc::new(data))));
-            self.unread = Some(unread);
         }
+        // Explorer may create the taskbar button after the mailbox opens or restart later.
+        if self.overlay_at.is_none_or(|at| at.elapsed() >= Duration::from_secs(10))
+            && let Some(window) = frame.winit_window()
+            && let Ok(handle) = window.window_handle()
+            && let RawWindowHandle::Win32(handle) = handle.as_raw()
+        {
+            let count = self.unread.unwrap_or(0);
+            let badge = (count > 0).then(|| badge_icon(count));
+            let result = mailcraft_windows_badge::set_overlay(handle.hwnd.get(), badge.as_ref().map(|icon| icon.rgba.as_slice()), 64, &format!("{count} unread"));
+            if let Err(error) = result { log::warn!("taskbar badge: {error}"); }
+            self.overlay_at = Some(Instant::now());
+        }
+        ctx.request_repaint_after(Duration::from_secs(10));
     }
 
     pub(crate) fn show(&mut self, ctx: &Context) {
@@ -148,16 +153,12 @@ impl Tray {
 }
 
 /// Draw a legible count over the existing icon; the tooltip retains the exact count.
-fn badged_icon(base: &IconData, unread: usize) -> IconData {
-    if unread == 0 {
-        return base.clone();
-    }
-    let Some(image) = image::RgbaImage::from_raw(base.width, base.height, base.rgba.clone()) else { return base.clone() };
-    let mut image = image::imageops::resize(&image, 64, 64, image::imageops::FilterType::Lanczos3);
-    for y in 24_i32..64 {
-        for x in 24_i32..64 {
-            if (x - 44).pow(2) + (y - 44).pow(2) <= 19 * 19 {
-                image.put_pixel(x as u32, y as u32, image::Rgba([185, 32, 38, 255]));
+fn badge_icon(unread: usize) -> IconData {
+    let mut image = image::RgbaImage::new(64, 64);
+    for y in 0_i32..64 {
+        for x in 0_i32..64 {
+            if (x - 31).pow(2) + (y - 31).pow(2) <= 31 * 31 {
+                image.put_pixel(x as u32, y as u32, image::Rgba([150, 12, 23, 255]));
             }
         }
     }
@@ -175,9 +176,9 @@ fn badged_icon(base: &IconData, unread: usize) -> IconData {
         [0, 2, 7, 2, 0],
     ];
     let label = if unread > 99 { "99+".to_string() } else { unread.to_string() };
-    let scale = 3_i32;
+    let scale = 5_i32;
     let width = (label.len() as i32 * 4 - 1) * scale;
-    let left = 44 - width / 2;
+    let left = 32 - width / 2;
     for (index, character) in label.chars().enumerate() {
         let digit = character.to_digit(10).map_or(10, |n| n as usize);
         for (row, bits) in DIGITS[digit].iter().enumerate() {
@@ -186,7 +187,7 @@ fn badged_icon(base: &IconData, unread: usize) -> IconData {
                     for dy in 0..scale {
                         for dx in 0..scale {
                             let x = left + index as i32 * 4 * scale + col * scale + dx;
-                            let y = 37 + row as i32 * scale + dy;
+                            let y = 19 + row as i32 * scale + dy;
                             image.put_pixel(x as u32, y as u32, image::Rgba([255, 255, 255, 255]));
                         }
                     }
