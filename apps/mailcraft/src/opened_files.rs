@@ -4,10 +4,10 @@
 //! with the system's program for their kind.
 //!
 //! ```text
-//! <cache>/MailCraft/Attachments/      this user's cache folder (Windows %LOCALAPPDATA%,
+//! <cache>/MailCraft/Attachments/      this user's cache folder (Windows %TEMP%,
 //!                                     macOS ~/Library/Caches, elsewhere $XDG_CACHE_HOME or ~/.cache);
 //!                                     only this user may read it
-//!     <process>-<time>/               one per run of MailCraft, removed when it quits
+//!     <process>-<time>/               one per run of MailCraft
 //!         1/report.pdf                one folder per file opened, so two files of one name
 //!         2/report.pdf                never meet; the file read-only, as a copy is
 //! ```
@@ -25,8 +25,8 @@
 //! - **Opened without a shell:** the system's own opener started as a program (Explorer on
 //!   Windows, `open` on macOS, `xdg-open` and the like elsewhere; `file_launcher.rs`), with the
 //!   file's whole absolute path as the one argument.
-//! - **Tidied:** the run's folder goes when MailCraft quits; what an earlier run left (it was
-//!   killed, the file was still open) goes at the next start once it is a day old.
+//! - **Tidied:** on Windows, earlier runs are removed at a later start once a day old, allowing
+//!   the viewer time to open them. On other systems the run's folder is removed at quit.
 
 use std::fs;
 use std::io::Write as _;
@@ -46,7 +46,9 @@ const DEPTH: usize = 3;
 /// The folder for all runs: in this user's cache folder.
 pub fn base() -> Option<PathBuf> {
     let cache = if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+        // LOCALAPPDATA can be redirected to a package's private LocalCache, leaving an external
+        // viewer unable to find the path. The system temporary directory is shared with it.
+        Some(std::env::temp_dir())
     } else if cfg!(target_os = "macos") {
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Caches"))
     } else {
@@ -55,6 +57,13 @@ pub fn base() -> Option<PathBuf> {
             .filter(|p| p.is_absolute())
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
     }?;
+    cache.is_absolute().then(|| cache.join("MailCraft").join("Attachments"))
+}
+
+/// The former Windows location, retained for removal of attachments from earlier versions.
+#[cfg(windows)]
+pub fn legacy_base() -> Option<PathBuf> {
+    let cache = PathBuf::from(std::env::var_os("LOCALAPPDATA")?);
     cache.is_absolute().then(|| cache.join("MailCraft").join("Attachments"))
 }
 
@@ -129,8 +138,8 @@ impl Opened {
         Err(last)
     }
 
-    /// Remove this run's folder (when MailCraft quits). A file another program still holds
-    /// (Windows) stays, for the next start to tidy.
+    /// Remove this run's folder, except on Windows where viewers may still need it.
+    #[cfg(any(test, not(windows)))]
     pub fn clear(&self) {
         let run = self.run.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
         if let Some(folder) = run {
@@ -161,6 +170,10 @@ impl Opened {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "opened_files_lifetime_tests.rs"]
+mod opened_files_lifetime_tests;
 
 /// `path` and the folders above it that are missing, the last for this user only. A link at
 /// `path` is refused.

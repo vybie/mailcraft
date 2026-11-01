@@ -90,6 +90,15 @@ impl Roots {
             }
             roots.list.push(Root { path: attachments, name: "Attachments", itself: true });
         }
+        #[cfg(windows)]
+        if let Some(attachments) = crate::opened_files::legacy_base()
+            && !roots.list.iter().any(|root| root.path == attachments)
+        {
+            if let Some(cache) = attachments.parent() {
+                roots.parents.push(Root { path: cache.to_path_buf(), name: "MailCraft", itself: true });
+            }
+            roots.list.push(Root { path: attachments, name: "Attachments", itself: true });
+        }
         roots
     }
 }

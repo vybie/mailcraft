@@ -202,6 +202,10 @@ fn the_real_folders_are_the_ones_the_program_uses() {
     if let Some(base) = crate::opened_files::base() {
         assert!(roots.list.iter().any(|r| r.path == base));
     }
+    #[cfg(windows)]
+    if let Some(base) = crate::opened_files::legacy_base() {
+        assert!(roots.list.iter().any(|r| r.path == base));
+    }
     // Whatever they are, each passes the checks it will be held to (or does not exist yet).
     for root in &roots.list {
         let named = root.path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case(root.name));

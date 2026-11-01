@@ -232,7 +232,8 @@ impl eframe::App for App {
                 log::error!("saving the mailbox on exit failed: {e}");
             }
         }
-        // The attachments opened in this run (#126).
+        // On Windows the viewer may still need the attachment after MailCraft exits.
+        #[cfg(not(windows))]
         if let Some(opened) = OPENED.get() {
             opened.clear();
         }
@@ -311,6 +312,10 @@ fn opened_files() -> Option<&'static opened_files::Opened> {
         std::thread::sleep(std::time::Duration::from_secs(30));
         if let Some(opened) = OPENED.get() {
             opened.tidy(opened_files::MAX_AGE);
+        }
+        #[cfg(windows)]
+        if let Some(legacy) = opened_files::legacy_base().filter(|path| Some(path.clone()) != opened_files::base()) {
+            opened_files::Opened::at(legacy).tidy(opened_files::MAX_AGE);
         }
     };
     if let Err(e) = std::thread::Builder::new().name("opened attachments tidying".into()).spawn(tidy) {
