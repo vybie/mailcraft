@@ -2224,10 +2224,9 @@ fn sized(css: &Css, attr: Option<Length>) -> Option<Length> {
     }
 }
 
-/// The width a box on a line asks for. The whole line (`width:100%`, what column builders write
-/// on every column) is what a block has anyway, and asks for nothing.
+/// The width a box on a line asks for. A full-width inline box occupies a whole line too.
 fn box_width(css: &Css) -> Option<Length> {
-    sized(css, None).filter(|w| *w != Length::Percent(100))
+    sized(css, None)
 }
 
 /// Whether a style gives an element something to show of its own as a box: a background, a frame,

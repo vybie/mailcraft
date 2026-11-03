@@ -68,6 +68,20 @@ fn columns_keep_their_widths() {
 }
 
 #[test]
+fn responsive_full_width_columns_keep_the_width_selected_by_the_cascade() {
+    let html = "<style>@media only screen and (min-width:480px) { .column { width:50% !important; max-width:50% } }</style>\
+        <div><div class='column' style='display:inline-block;width:100%'>Image area</div>\
+        <div class='column' style='display:inline-block;width:100%'>Story title</div></div>";
+    for (width, expected) in [(479.0, 100), (480.0, 50), (700.0, 50)] {
+        let blocks = crate::parse_in(html, &crate::Env::for_pane(width, false)).blocks;
+        let found = boxes(&blocks);
+        assert_eq!(found.len(), 2, "{width}: {blocks:?}");
+        assert!(found.iter().all(|t| t.width == Some(Length::Percent(expected))), "{width}: {found:?}");
+        assert!(blocks[1].beside, "{width}: {blocks:?}");
+    }
+}
+
+#[test]
 fn only_inline_block_makes_a_box_and_only_one_with_something_to_show() {
     let boxed = |html: &str| !boxes(&parse(html)).is_empty();
     assert!(boxed("<span style='display:inline-block;padding:4px'>x</span>"));

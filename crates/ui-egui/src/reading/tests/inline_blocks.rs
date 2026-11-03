@@ -76,6 +76,34 @@ fn columns_keep_their_widths_backgrounds_and_wrap_under_when_there_is_no_room() 
 }
 
 #[test]
+fn responsive_full_width_columns_stack_until_the_desktop_breakpoint() {
+    let html = "<style>@media only screen and (min-width:480px) { .column { width:50% !important; max-width:50% } }</style>\
+        <div style='font-size:0'><div class='column' style='display:inline-block;width:100%;font-size:14px'>Image area</div>\
+        <div class='column' style='display:inline-block;width:100%;font-size:14px'>Story title</div></div>";
+    let m = message(html);
+    for dark in [false, true] {
+        in_frame(dark, |ctx| {
+            for width in [400.0, 600.0] {
+                let doc = super::super::view::Doc::of_in(&m, false, mailcraft_html::Env::for_pane(width, dark));
+                let pictures = super::super::images::Pictures::of(ctx);
+                let mut pictures = pictures.lock().unwrap();
+                let mut laid = Laid::new(width).cut(doc.cuts.clone());
+                laid.advance(ctx, &doc.blocks, Some(&m), &mut pictures, usize::MAX);
+                assert!(laid.done);
+                let (image, title) = (find_exact(&laid, "Image area"), find_exact(&laid, "Story title"));
+                if width < 480.0 {
+                    assert!(title.rect.min.y > image.rect.max.y - 1.0, "{:?} {:?}", image.rect, title.rect);
+                    assert!((title.rect.min.x - image.rect.min.x).abs() < 1.0);
+                } else {
+                    assert!((title.rect.min.y - image.rect.min.y).abs() < 1.0, "{:?} {:?}", image.rect, title.rect);
+                    assert!(title.rect.min.x > image.rect.max.x);
+                }
+            }
+        });
+    }
+}
+
+#[test]
 fn a_picture_in_a_line_of_text_stays_in_it_and_the_text_goes_on_under_it() {
     let html = "<p>Click <img src='cid:tick-16@quillon.example' width='24' height='24' alt='tick'> to carry on reading this sentence, which is long enough \
                 that it cannot stay on one line of the pane and has to go on to the next one and then the one after it.</p>";

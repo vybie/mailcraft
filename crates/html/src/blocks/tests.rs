@@ -913,7 +913,7 @@ fn a_font_size_of_nothing_hides_text_and_not_what_is_inside() {
     );
     // What a column builder writes: three levels of it round a picture and a paragraph.
     let built = r#"<table><tr><td style="direction:ltr;font-size:0px;padding:20px 0;text-align:center;"><div class="col" style="font-size:0px;text-align:left;display:inline-block;vertical-align:top;width:100%;"><table><tr><td style="font-size:0px;padding:10px 25px;"><img src="https://img.example/hero.jpg" width="550" height="auto" style="border:0;display:block;height:auto;width:100%;font-size:13px;"></td></tr><tr><td style="font-size:0px;padding:10px 25px;"><div style="font-family:Arial;font-size:13px;line-height:1;color:#000000;">The text of the column.</div></td></tr></table></div></td></tr></table>"#;
-    assert_eq!(dump(built), ["img(https://img.example/hero.jpg 550x)|", "p|[#000000^13:The text of the column.]"]);
+    assert_eq!(dump(built), ["layout.c.inline w=100%[(img(https://img.example/hero.jpg 550x)| ; p|[#000000^13:The text of the column.])]"]);
 }
 
 #[test]
