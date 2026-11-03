@@ -24,8 +24,9 @@
   function visible(element) {
     const rect = element.getBoundingClientRect();
     if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 2 || rect.height <= 2) return null;
-    let left = Math.max(rect.left, 0), top = Math.max(rect.top, 0);
-    let right = Math.min(rect.right, document.documentElement.clientWidth), bottom = Math.min(rect.bottom, document.documentElement.clientHeight);
+    // A visible message may have eligible images below the viewport; only actual ancestor
+    // clipping, not the viewport edge, removes a candidate.
+    let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom;
     let node = element, depth = 0;
     while (node && depth++ < MAX_ANCESTORS) {
       const style = getComputedStyle(node);
