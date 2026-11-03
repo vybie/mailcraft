@@ -8,10 +8,18 @@ use crate::{
 };
 use std::sync::Arc;
 
+/// Whether a resource is an attached picture or data embedded directly in the HTML.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceKind {
+    Cid,
+    Data,
+}
+
 /// A local, message-scoped response. The host must validate image dimensions before serving it.
 #[derive(Debug, Clone)]
 pub struct Resource {
     pub url: String,
+    pub kind: ResourceKind,
     pub mime: &'static str,
     pub bytes: Arc<Vec<u8>>,
 }
@@ -42,7 +50,7 @@ pub fn transform(html: &str, scope: &str, mut resolve_cid: impl FnMut(&str) -> O
         scope,
         resolve_cid: &mut resolve_cid,
         data_budget: data::Budget::default(),
-        bytes: 0,
+        cid_count: 0,
         resources: Vec::new(),
         edits: Vec::new(),
     };
@@ -93,28 +101,28 @@ struct Extract<'a, F> {
     scope: &'a str,
     resolve_cid: &'a mut F,
     data_budget: data::Budget,
-    bytes: usize,
+    cid_count: usize,
     resources: Vec<Resource>,
     edits: Vec<(usize, usize, String)>,
 }
 impl<F: FnMut(&str) -> Option<Vec<u8>>> Extract<'_, F> {
     fn url(&mut self, raw: &str) {
-        if self.resources.len() >= 200 {
-            return;
-        }
         let decoded = entities::unescape(raw);
         let src = decoded.trim();
-        let bytes = if data::is_data(src) {
-            data::picture(src, true, &mut self.data_budget).1.map(|p| p.0)
+        let (kind, bytes) = if data::is_data(src) {
+            (ResourceKind::Data, data::picture(src, true, &mut self.data_budget).1.map(|p| p.0))
         } else if src.get(..4).is_some_and(|s| s.eq_ignore_ascii_case("cid:")) {
-            (self.resolve_cid)(src).map(Arc::new)
+            if self.cid_count >= 200 {
+                return;
+            }
+            (ResourceKind::Cid, (self.resolve_cid)(src).map(Arc::new))
         } else {
-            None
+            return;
         };
         let Some(bytes) = bytes else { return };
-        // CID attachments share the existing per-picture decode bound. The aggregate bound also
-        // protects the map from unbounded caller-supplied attachments.
-        if bytes.len() > 24 * 1024 * 1024 || self.bytes.saturating_add(bytes.len()) > data::MAX_DATA_PICTURES_BYTES {
+        // The reading pane accepts attached pictures up to 24 MiB each. Embedded data uses
+        // its own limits in data::picture; neither kind consumes the other's budget.
+        if kind == ResourceKind::Cid && bytes.len() > 24 * 1024 * 1024 {
             return;
         }
         let Some(mime) = raster_mime(&bytes) else { return };
@@ -125,8 +133,10 @@ impl<F: FnMut(&str) -> Option<Vec<u8>>> Extract<'_, F> {
             return;
         }
         let url = format!("https://mailcraft.invalid/reading/asset/{}/{}", self.scope, self.resources.len());
-        self.bytes += bytes.len();
-        self.resources.push(Resource { url: url.clone(), mime, bytes });
+        if kind == ResourceKind::Cid {
+            self.cid_count += 1;
+        }
+        self.resources.push(Resource { url: url.clone(), kind, mime, bytes });
         self.edits.push((start, end, url));
     }
     /// Parse srcset candidates as URLs followed by descriptors, preserving separators.

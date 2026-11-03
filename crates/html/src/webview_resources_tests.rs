@@ -53,3 +53,33 @@ proptest::proptest! {
         let _ = transform(&html, "scope", |_| None);
     }
 }
+
+#[test]
+fn data_and_cid_limits_are_independent() {
+    let html = format!("{}{}{}", "<img src='cid:x'>".repeat(201), format!("<img src='{DATA}'>").repeat(33), "<img src='cid:x'>");
+    let result = transform(&html, "scope", |_| Some(GIF.to_vec())).unwrap();
+    assert_eq!(result.resources.iter().filter(|r| r.kind == ResourceKind::Cid).count(), 200);
+    assert_eq!(result.resources.iter().filter(|r| r.kind == ResourceKind::Data).count(), 32);
+    assert!(result.html.contains("cid:x"));
+    assert!(result.html.contains(DATA));
+}
+
+#[test]
+fn cid_uses_attachment_size_limit_without_data_aggregate_cap() {
+    let eleven_mb = 11 * 1024 * 1024;
+    let result = transform(&"<img src='cid:x'>".repeat(4), "scope", |_| {
+        let mut bytes = vec![0; eleven_mb];
+        bytes[..GIF.len()].copy_from_slice(GIF);
+        Some(bytes)
+    })
+    .unwrap();
+    assert_eq!(result.resources.len(), 4);
+    assert!(result.resources.iter().all(|r| r.kind == ResourceKind::Cid));
+    let result = transform("<img src='cid:large'>", "scope", |_| {
+        let mut bytes = vec![0; 24 * 1024 * 1024 + 1];
+        bytes[..GIF.len()].copy_from_slice(GIF);
+        Some(bytes)
+    })
+    .unwrap();
+    assert!(result.resources.is_empty());
+}
