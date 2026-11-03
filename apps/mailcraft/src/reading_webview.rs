@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use mailcraft_model::Message;
-use mailcraft_ui_egui::{MailApp, NativeHtmlImages, NativeHtmlPane, NativePictureAccess};
+use mailcraft_ui_egui::{MailApp, NativeHtmlImages, NativeHtmlPane, NativePictureAccess, native_html_same_message};
 use mailcraft_windows_reading_webview::Host;
 
 #[derive(Default)]
@@ -18,6 +18,8 @@ pub struct Pane {
 
 struct Current {
     message: Arc<Message>,
+    app_instance: Arc<()>,
+    mailbox_opening: u64,
     host: Host,
     access: NativePictureAccess,
     supplied: HashSet<String>,
@@ -56,7 +58,9 @@ impl Pane {
         }
         let same = |message: &Arc<Message>| Arc::ptr_eq(message, &pane.message);
         if self.failed.as_ref().is_some_and(same) { return; }
-        let replace = self.current.as_ref().is_none_or(|current| !same(&current.message) || current.access != pane.access || current.picture_cache_generation != pane.picture_cache_generation);
+        let replace = self.current.as_ref().is_none_or(|current| !Arc::ptr_eq(&current.app_instance, &pane.app_instance)
+            || current.mailbox_opening != pane.mailbox_opening || (!same(&current.message) && !native_html_same_message(&current.message, &pane.message))
+            || current.access != pane.access || current.picture_cache_generation != pane.picture_cache_generation);
         if replace {
             self.current = None;
             self.failed = None;
@@ -67,6 +71,7 @@ impl Pane {
             }
         }
         let Some(current) = &mut self.current else { return };
+        current.message = pane.message.clone();
         if current.dark != pane.dark {
             let _ = current.host.hide();
             if current.host.set_dark(pane.dark).is_err() { self.failed = Some(pane.message); self.current = None; return; }
@@ -87,7 +92,7 @@ impl Pane {
         // Only image requests matched by the bounded host-authored dimension inspection enter
         // the existing image-permission path; unclassified requests stay blocked.
         let changed = app.native_html_images.as_ref().is_none_or(|prior| !Arc::ptr_eq(&prior.message, &pane.message) || prior.urls != requests);
-        app.native_html_images = Some(NativeHtmlImages { message: pane.message.clone(), urls: requests.clone() });
+        app.native_html_images = Some(NativeHtmlImages { message: pane.message.clone(), app_instance: pane.app_instance.clone(), mailbox_opening: pane.mailbox_opening, urls: requests.clone() });
         if changed { ctx.request_repaint(); }
         let normal = |url: &str| mailcraft_link::WebLink::parse(url).map(mailcraft_link::WebLink::into_string);
         let known: Vec<(String, String)> = pane.remote_urls.iter().filter_map(|url| normal(url).map(|n| (n, url.to_string()))).collect();
@@ -143,7 +148,7 @@ impl Pane {
         host.set_image_access(generation, pane.access == NativePictureAccess::Allowed);
         host.show(&transformed.html, bounds(pane.rect, ctx.pixels_per_point())).map_err(|_| ())?;
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        Ok(Current { message: pane.message.clone(), host, access: pane.access, supplied: HashSet::new(), dirty: false, picture_cache_generation: pane.picture_cache_generation, dark: pane.dark })
+        Ok(Current { message: pane.message.clone(), app_instance: pane.app_instance.clone(), mailbox_opening: pane.mailbox_opening, host, access: pane.access, supplied: HashSet::new(), dirty: false, picture_cache_generation: pane.picture_cache_generation, dark: pane.dark })
     }
 }
 

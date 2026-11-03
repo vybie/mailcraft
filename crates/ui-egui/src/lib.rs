@@ -1206,6 +1206,8 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
 #[cfg(windows)]
 pub struct NativeHtmlPane {
     pub message: std::sync::Arc<mailcraft_model::Message>,
+    pub app_instance: std::sync::Arc<()>,
+    pub mailbox_opening: u64,
     pub rect: egui::Rect,
     pub access: reading::Access,
     /// The existing renderer's bounded, tracker-filtered remote image addresses.
@@ -1219,8 +1221,24 @@ pub struct NativeHtmlPane {
 #[cfg(windows)]
 pub struct NativeHtmlImages {
     pub message: std::sync::Arc<mailcraft_model::Message>,
+    pub app_instance: std::sync::Arc<()>,
+    pub mailbox_opening: u64,
     pub urls: Vec<String>,
 }
+
+/// Equality of the message identity and the complete content the native HTML host can serve.
+#[cfg(windows)]
+pub fn native_html_same_message(a: &mailcraft_model::Message, b: &mailcraft_model::Message) -> bool {
+    a.id == b.id && a.account == b.account && a.folder == b.folder && a.message_id == b.message_id
+        && a.body.html == b.body.html && a.attachments.len() == b.attachments.len()
+        && a.attachments.iter().zip(&b.attachments).all(|(a, b)| {
+            a.name == b.name && a.mime == b.mime && a.content_id == b.content_id && a.inline == b.inline && a.kept == b.kept
+                && (std::sync::Arc::ptr_eq(&a.data, &b.data) || a.data == b.data)
+        })
+}
+
+#[cfg(all(test, windows))]
+mod native_html_identity_tests;
 
 /// The application.
 pub struct MailApp {
@@ -1228,6 +1246,8 @@ pub struct MailApp {
     /// Set during a frame only when a main-pane HTML body is visible.
     #[cfg(windows)]
     pub native_html_pane: Option<NativeHtmlPane>,
+    #[cfg(windows)]
+    pub native_html_instance: std::sync::Arc<()>,
     /// The exact message whose native host failed, so the existing reader can take over.
     #[cfg(windows)]
     pub native_html_failed: Option<std::sync::Arc<mailcraft_model::Message>>,
@@ -1713,6 +1733,8 @@ impl MailApp {
             remote_pictures: Default::default(),
             #[cfg(windows)]
             native_html_pane: None,
+            #[cfg(windows)]
+            native_html_instance: std::sync::Arc::new(()),
             #[cfg(windows)]
             native_html_failed: None,
             #[cfg(windows)]
