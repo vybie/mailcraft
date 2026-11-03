@@ -25,7 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[allow(deprecated)]
     let window = Arc::new(events.create_window(Window::default_attributes().with_visible(false).with_inner_size(LogicalSize::new(800, 600)))?);
     let dir = std::env::temp_dir().join(format!("mailcraft-webview-smoke-{}", std::process::id()));
-    let host = Host::new(window, dir.to_str().ok_or("bad temporary path")?, 1, || {})?;
+    let host = Host::new(window.clone(), dir.to_str().ok_or("bad temporary path")?, 1, true, || {})?;
+    #[cfg(debug_assertions)]
+    assert_eq!(host.smoke_background()?, [0x14, 0x14, 0x14, 255], "dark controller must start dark");
     host.set_dark(true)?;
     let html = format!("<style>body{{background:#fff;color:#111}}.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png)}}</style>\
         <div class='hero'></div><img width=40 height=40 src='http://{address}/image.png'>\
@@ -82,6 +84,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     assert!(!host.failed(), "WebView2 theme emulation failed");
     drop(host);
+    let light = Host::new(window, dir.to_str().ok_or("bad temporary path")?, 2, false, || {})?;
+    #[cfg(debug_assertions)]
+    assert_eq!(light.smoke_background()?, [255, 255, 255, 255], "light controller must start light");
+    drop(light);
     running.store(false, Ordering::Relaxed);
     let _ = server.join();
     assert_eq!(connections.load(Ordering::Relaxed), 0, "browser attempted a network request");

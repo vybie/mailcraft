@@ -133,7 +133,7 @@ impl Pane {
         let dir = std::env::temp_dir().join("MailCraft").join(format!("WebView2-{}", std::process::id()));
         let dir = dir.to_str().ok_or(())?;
         let wake = ctx.clone();
-        let host = Host::new(window, dir, generation, move || wake.request_repaint()).map_err(|_| ())?;
+        let host = Host::new(window, dir, generation, pane.dark, move || wake.request_repaint()).map_err(|_| ())?;
         host.set_dark(pane.dark).map_err(|_| ())?;
         for resource in transformed.resources {
             if MailApp::native_picture_valid(&resource.bytes) {
