@@ -284,7 +284,7 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     let room = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     #[cfg(windows)]
     if place == Place::Pane && m.body.html.is_some() && room.is_positive() {
-        app.native_html_pane = Some(crate::NativeHtmlPane { message: m.clone(), rect: room, access: remote::access(app, m), remote_urls: urls.clone(), pictures_waiting: progress.waiting, picture_cache_generation: app.remote_pictures.cache_generation });
+        app.native_html_pane = Some(crate::NativeHtmlPane { message: m.clone(), rect: room, access: remote::access(app, m), remote_urls: urls.clone(), pictures_waiting: progress.waiting, picture_cache_generation: app.remote_pictures.cache_generation, dark: Tokens::get(ui.ctx()).dark && !app.ui.light_messages });
     }
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         view::page(app, place, ui).show(ui, |ui| {

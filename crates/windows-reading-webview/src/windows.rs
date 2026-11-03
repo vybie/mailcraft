@@ -26,6 +26,7 @@ pub struct Host {
     generation: u64,
     shown: std::cell::Cell<bool>,
     status: Rc<std::cell::Cell<i8>>,
+    theme_failed: Rc<std::cell::Cell<bool>>,
     inspected: Rc<std::cell::Cell<bool>>,
     inspection_pending: Rc<std::cell::Cell<bool>>,
     need_inspection: Rc<std::cell::Cell<bool>>,
@@ -133,7 +134,7 @@ impl Host {
         let process_status = status.clone();
         let wake_failure = wake.clone();
         let failed = view.on_process_failed(move |_| { process_status.set(-1); wake_failure(); }).map_err(|e| e.to_string())?;
-        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), status, inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
+        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), status, theme_failed: Rc::new(std::cell::Cell::new(false)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
     }
 
     pub fn show(&self, html: &str, bounds: [i32; 4]) -> Result<(), String> {
@@ -154,7 +155,7 @@ impl Host {
     pub fn set_visible(&self, visible: bool) -> Result<(), String> { self.controller.set_visible(visible).map_err(|e| e.to_string()) }
     pub fn ready(&self) -> bool { self.status.get() == 1 && self.inspected.get() }
     pub fn loaded(&self) -> bool { self.status.get() == 1 }
-    pub fn failed(&self) -> bool { self.status.get() < 0 }
+    pub fn failed(&self) -> bool { self.status.get() < 0 || self.theme_failed.get() }
     /// Re-request after validated images become available; no browser-side network is allowed.
     pub fn refresh(&self) -> Result<(), String> {
         let view = self.view.clone();
@@ -177,6 +178,20 @@ impl Host {
     pub fn add_image(&self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool { self.images.borrow_mut().put(generation, url, bytes) }
     pub fn add_embedded_image(&self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool { self.images.borrow_mut().put_local(generation, url, bytes) }
     pub fn generation(&self) -> u64 { self.generation }
+
+    /// Ask Chromium to adapt bright authored colors while preserving layout and image content.
+    /// Sender dark-mode media queries follow MailCraft's effective message-body theme.
+    pub fn set_dark(&self, dark: bool) -> Result<(), String> {
+        let auto = if dark { r#"{"enabled":true}"# } else { r#"{"enabled":false}"# };
+        let media = if dark { r#"{"features":[{"name":"prefers-color-scheme","value":"dark"}]}"# } else { r#"{"features":[{"name":"prefers-color-scheme","value":"light"}]}"# };
+        let failed = self.theme_failed.clone();
+        let wake = self.wake.clone();
+        self.view.call_dev_tools_protocol_method("Emulation.setAutoDarkModeOverride", auto, move |result| { if result.is_err() { failed.set(true); wake(); } }).map_err(|e| e.to_string())?;
+        let failed = self.theme_failed.clone();
+        let wake = self.wake.clone();
+        let inspect = self.need_inspection.clone();
+        self.view.call_dev_tools_protocol_method("Emulation.setEmulatedMedia", media, move |result| { if result.is_err() { failed.set(true); } else { inspect.set(true); } wake(); }).map_err(|e| e.to_string())
+    }
 
     /// Reclassify on initial load and when the browser's scroll position or viewport changes.
     pub fn poll(&self) -> Result<(), String> {

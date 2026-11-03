@@ -26,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window = Arc::new(events.create_window(Window::default_attributes().with_visible(false).with_inner_size(LogicalSize::new(800, 600)))?);
     let dir = std::env::temp_dir().join(format!("mailcraft-webview-smoke-{}", std::process::id()));
     let host = Host::new(window, dir.to_str().ok_or("bad temporary path")?, 1, || {})?;
+    host.set_dark(true)?;
     let html = format!("<style>.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png)}}</style>\
         <div class='hero'></div><img width=40 height=40 src='http://{address}/image.png'>\
         <img width=1 height=1 src='http://{address}/tracker.png'>");
@@ -45,6 +46,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if host.failed() { break; }
         std::thread::sleep(Duration::from_millis(25));
     }
+    host.set_dark(false)?;
+    for _ in 0..20 {
+        windows_window::pump();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!host.failed(), "WebView2 theme emulation failed");
     drop(host);
     running.store(false, Ordering::Relaxed);
     let _ = server.join();

@@ -23,6 +23,7 @@ struct Current {
     supplied: HashSet<String>,
     dirty: bool,
     picture_cache_generation: u64,
+    dark: bool,
 }
 
 impl Pane {
@@ -53,6 +54,10 @@ impl Pane {
             }
         }
         let Some(current) = &mut self.current else { return };
+        if current.dark != pane.dark {
+            if current.host.set_dark(pane.dark).is_err() { self.failed = Some(pane.message); self.current = None; return; }
+            current.dark = pane.dark;
+        }
         if current.host.failed() {
             self.failed = Some(pane.message);
             self.current = None;
@@ -115,6 +120,7 @@ impl Pane {
         let dir = dir.to_str().ok_or(())?;
         let wake = ctx.clone();
         let host = Host::new(window, dir, generation, move || wake.request_repaint()).map_err(|_| ())?;
+        host.set_dark(pane.dark).map_err(|_| ())?;
         for resource in transformed.resources {
             if MailApp::native_picture_valid(&resource.bytes) {
                 let _ = host.add_embedded_image(generation, &resource.url, resource.bytes);
@@ -123,7 +129,7 @@ impl Pane {
         host.set_image_access(generation, pane.access == NativePictureAccess::Allowed);
         host.show(&transformed.html, bounds(pane.rect, ctx.pixels_per_point())).map_err(|_| ())?;
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        Ok(Current { message: pane.message.clone(), host, access: pane.access, supplied: HashSet::new(), dirty: false, picture_cache_generation: pane.picture_cache_generation })
+        Ok(Current { message: pane.message.clone(), host, access: pane.access, supplied: HashSet::new(), dirty: false, picture_cache_generation: pane.picture_cache_generation, dark: pane.dark })
     }
 }
 

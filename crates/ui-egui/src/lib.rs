@@ -1212,6 +1212,7 @@ pub struct NativeHtmlPane {
     pub remote_urls: Vec<std::sync::Arc<str>>,
     pub pictures_waiting: usize,
     pub picture_cache_generation: u64,
+    pub dark: bool,
 }
 
 /// Browser-discovered, tracker-filtered URLs for the exact message currently displayed.
