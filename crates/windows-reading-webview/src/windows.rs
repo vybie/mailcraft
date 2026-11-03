@@ -10,7 +10,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use crate::policy::Images;
 use windows_webview::{Color, Controller, ControllerOptions, Environment, EnvironmentOptions, EventRegistration, PermissionState, WebResourceResponse, WebView};
 
-fn document(generation: u64) -> String { format!("https://mailcraft.invalid/reading/document/{generation}") }
+const DOCUMENT: &str = "https://mailcraft.invalid/reading/document";
 const CSP: &str = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src http: https:; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-same-origin allow-popups allow-scripts";
 const VISIBLE_IMAGES: &str = include_str!("visible_images.js");
 const SCROLL_POSITION: &str = "[window.scrollX,window.scrollY,document.documentElement.clientWidth,document.documentElement.clientHeight]";
@@ -23,9 +23,7 @@ pub struct Host {
     allow_document: Rc<RefCell<bool>>,
     links: Rc<RefCell<Vec<String>>>,
     images: Rc<RefCell<Images>>,
-    generation: Rc<std::cell::Cell<u64>>,
-    document_epoch: Rc<std::cell::Cell<u64>>,
-    navigation_id: Rc<std::cell::Cell<Option<u64>>>,
+    generation: u64,
     shown: std::cell::Cell<bool>,
     navigation_started: std::cell::Cell<bool>,
     status: Rc<std::cell::Cell<i8>>,
@@ -75,9 +73,6 @@ impl Host {
         let allow_document = Rc::new(RefCell::new(false));
         let links = Rc::new(RefCell::new(Vec::<String>::new()));
         let status = Rc::new(std::cell::Cell::new(0i8));
-        let generation = Rc::new(std::cell::Cell::new(generation));
-        let document_epoch = Rc::new(std::cell::Cell::new(0u64));
-        let navigation_id = Rc::new(std::cell::Cell::new(None));
         let inspected = Rc::new(std::cell::Cell::new(false));
         let inspection_pending = Rc::new(std::cell::Cell::new(false));
         let need_inspection = Rc::new(std::cell::Cell::new(true));
@@ -86,14 +81,13 @@ impl Host {
         let restore_scroll = Rc::new(std::cell::Cell::new(None));
         let wake: Rc<dyn Fn()> = Rc::new(wake);
         let images = Rc::new(RefCell::new(Images::default()));
-        images.borrow_mut().reset(generation.get());
+        images.borrow_mut().reset(generation);
         let body = html.clone();
         let pending_images = images.clone();
-        let resource_generation = generation.clone();
         let wake_resource = wake.clone();
         let resource = view.on_web_resource_requested("*", move |request| {
             let uri = request.uri();
-            if request.is_document() && request.method() == "GET" && uri == document(resource_generation.get()) {
+            if request.is_document() && request.method() == "GET" && uri == DOCUMENT {
                 return Some(WebResourceResponse::new(body.borrow().clone()).content_type("text/html; charset=utf-8")
                     .header("Content-Security-Policy", CSP).header("Cache-Control", "no-store").header("X-Content-Type-Options", "nosniff"));
             }
@@ -106,33 +100,19 @@ impl Host {
             Some(WebResourceResponse::new(Vec::new()).status(403, "Forbidden").header("Cache-Control", "no-store"))
         }).map_err(|e| e.to_string())?;
         let may_load = allow_document.clone();
-        let nav_generation = generation.clone();
-        let nav_id = navigation_id.clone();
         let pending_links = links.clone();
         let wake_link = wake.clone();
-        let nav_view = view.clone();
-        let nav_status = status.clone();
         let navigation = view.on_navigation_starting(move |event| {
             let uri = event.uri();
-            if uri == document(nav_generation.get()) && std::mem::take(&mut *may_load.borrow_mut()) {
-                let id = event.navigation_id();
-                if id != 0 { nav_id.set(Some(id)); return; }
-                let _ = event.set_cancel(true);
-                nav_status.set(-1);
-                wake_link();
-                return;
-            }
+            if uri == DOCUMENT && std::mem::take(&mut *may_load.borrow_mut()) { return; }
             let _ = event.set_cancel(true);
-            if nav_status.get() == 1 && event.is_user_initiated() && nav_view.source() == document(nav_generation.get()) && pending_links.borrow().len() < 16 { pending_links.borrow_mut().push(uri); wake_link(); }
+            if event.is_user_initiated() && pending_links.borrow().len() < 16 { pending_links.borrow_mut().push(uri); wake_link(); }
         }).map_err(|e| e.to_string())?;
         let pending_links = links.clone();
         let wake_link = wake.clone();
-        let link_generation = generation.clone();
-        let link_view = view.clone();
-        let link_status = status.clone();
         let new_window = view.on_new_window_requested(move |event| {
             let _ = event.set_handled(true);
-            if link_status.get() == 1 && event.is_user_initiated() && link_view.source() == document(link_generation.get()) && pending_links.borrow().len() < 16 {
+            if event.is_user_initiated() && pending_links.borrow().len() < 16 {
                 pending_links.borrow_mut().push(event.uri());
                 wake_link();
             }
@@ -145,9 +125,7 @@ impl Host {
         let inspected_after_load = inspected.clone();
         let restore_after_load = restore_scroll.clone();
         let view_after_load = view.clone();
-        let completed_id = navigation_id.clone();
         let completed = view.on_navigation_completed(move |event| {
-            if completed_id.get() != Some(event.navigation_id()) { return; }
             navigation_status.set(if event.is_success() { 1 } else { -1 });
             inspected_after_load.set(false);
             need_after_load.set(true);
@@ -161,7 +139,7 @@ impl Host {
         let process_status = status.clone();
         let wake_failure = wake.clone();
         let failed = view.on_process_failed(move |_| { process_status.set(-1); wake_failure(); }).map_err(|e| e.to_string())?;
-        Ok(Self { controller, view, html, allow_document, links, images, generation, document_epoch, navigation_id, shown: std::cell::Cell::new(false), navigation_started: std::cell::Cell::new(false), status, theme_failed: Rc::new(std::cell::Cell::new(false)), theme_generation: Rc::new(std::cell::Cell::new(0)), theme_pending: Rc::new(std::cell::Cell::new(0)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
+        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), navigation_started: std::cell::Cell::new(false), status, theme_failed: Rc::new(std::cell::Cell::new(false)), theme_generation: Rc::new(std::cell::Cell::new(0)), theme_pending: Rc::new(std::cell::Cell::new(0)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
     }
 
     pub fn show(&self, html: &str, bounds: [i32; 4]) -> Result<(), String> {
@@ -169,29 +147,6 @@ impl Host {
         *self.html.borrow_mut() = html.as_bytes().to_vec();
         self.controller.set_bounds(bounds[0], bounds[1], bounds[2], bounds[3]).map_err(|e| e.to_string())?;
         self.shown.set(true);
-        Ok(())
-    }
-
-    /// Hide and discard every message-specific resource before starting a new generation.
-    pub fn reset(&self, generation: u64) -> Result<(), String> {
-        self.hide()?;
-        self.generation.set(generation);
-        self.document_epoch.set(self.document_epoch.get().wrapping_add(1));
-        self.navigation_id.set(None);
-        self.images.borrow_mut().reset(generation);
-        self.html.borrow_mut().clear();
-        self.links.borrow_mut().clear();
-        *self.allow_document.borrow_mut() = false;
-        self.shown.set(false);
-        self.navigation_started.set(false);
-        self.status.set(0);
-        self.inspected.set(false);
-        self.inspection_pending.set(false);
-        self.need_inspection.set(true);
-        self.probe_pending.set(false);
-        *self.last_scroll.borrow_mut() = None;
-        self.last_probe.set(None);
-        self.restore_scroll.set(None);
         Ok(())
     }
 
@@ -217,10 +172,6 @@ impl Host {
     /// Re-request after validated images become available; no browser-side network is allowed.
     pub fn refresh(&self) -> Result<(), String> {
         self.hide()?;
-        self.document_epoch.set(self.document_epoch.get().wrapping_add(1));
-        self.navigation_id.set(None);
-        self.inspection_pending.set(false);
-        self.probe_pending.set(false);
         self.status.set(0);
         self.inspected.set(false);
         let view = self.view.clone();
@@ -229,10 +180,7 @@ impl Host {
         let status = self.status.clone();
         let inspected = self.inspected.clone();
         let wake = self.wake.clone();
-        let epoch = self.document_epoch.get();
-        let current = self.document_epoch.clone();
         self.view.execute_script(SCROLL_POSITION, move |result| {
-            if current.get() != epoch { return; }
             let position = result.ok().and_then(|s| serde_json::from_str::<[f64; 4]>(&s).ok());
             let Some([x, y, _, _]) = position.filter(|a| a.iter().all(|v| v.is_finite())) else { status.set(-1); wake(); return; };
             restore.set(Some((x.clamp(-1_000_000.0, 1_000_000.0), y.clamp(-1_000_000.0, 1_000_000.0))));
@@ -247,7 +195,7 @@ impl Host {
     pub fn set_image_access(&self, generation: u64, allowed: bool) { self.images.borrow_mut().set_allowed(generation, allowed); }
     pub fn add_image(&self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool { self.images.borrow_mut().put(generation, url, bytes) }
     pub fn add_embedded_image(&self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool { self.images.borrow_mut().put_local(generation, url, bytes) }
-    pub fn generation(&self) -> u64 { self.generation.get() }
+    pub fn generation(&self) -> u64 { self.generation }
 
     /// Ask Chromium to adapt bright authored colors while preserving layout and image content.
     /// Sender dark-mode media queries follow MailCraft's effective message-body theme.
@@ -276,10 +224,10 @@ impl Host {
     pub fn poll(&self) -> Result<(), String> {
         if self.shown.get() && !self.navigation_started.get() && self.theme_ready() {
             *self.allow_document.borrow_mut() = true;
-            self.view.navigate(&document(self.generation.get())).map_err(|e| e.to_string())?;
+            self.view.navigate(DOCUMENT).map_err(|e| e.to_string())?;
             self.navigation_started.set(true);
         }
-        if self.status.get() != 1 || self.view.source() != document(self.generation.get()) { return Ok(()); }
+        if self.status.get() != 1 || self.view.source() != DOCUMENT { return Ok(()); }
         if self.need_inspection.get() && !self.inspection_pending.get() {
             self.need_inspection.set(false);
             self.inspection_pending.set(true);
@@ -288,11 +236,8 @@ impl Host {
             let inspected = self.inspected.clone();
             let pending = self.inspection_pending.clone();
             let wake = self.wake.clone();
-            let generation = self.generation.get();
-            let epoch = self.document_epoch.get();
-            let current = self.document_epoch.clone();
+            let generation = self.generation;
             if let Err(e) = self.view.execute_script(VISIBLE_IMAGES, move |result| {
-                if current.get() != epoch { return; }
                 pending.set(false);
                 match result.ok().and_then(|s| crate::inspection::urls(&s)) {
                     Some(urls) => { images.borrow_mut().classify(generation, urls); inspected.set(true); }
@@ -309,10 +254,7 @@ impl Host {
             let needs = self.need_inspection.clone();
             let status = self.status.clone();
             let wake = self.wake.clone();
-            let epoch = self.document_epoch.get();
-            let current = self.document_epoch.clone();
             if let Err(e) = self.view.execute_script(SCROLL_POSITION, move |result| {
-                if current.get() != epoch { return; }
                 pending.set(false);
                 let position = result.ok().and_then(|s| serde_json::from_str::<[f64; 4]>(&s).ok()).filter(|v| v.iter().all(|n| n.is_finite()));
                 if let Some(position) = position {
