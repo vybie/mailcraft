@@ -159,7 +159,7 @@ fn tray_icon(base: &IconData, unread: usize) -> IconData {
     for y in 0_i32..34 {
         for x in 30_i32..64 {
             if (x - 47).pow(2) + (y - 17).pow(2) <= 17 * 17 {
-                image.put_pixel(x as u32, y as u32, image::Rgba([255, 255, 255, 255]));
+                image.put_pixel(x as u32, y as u32, image::Rgba([255, 185, 45, 255]));
             }
         }
     }
@@ -173,46 +173,48 @@ fn tray_icon(base: &IconData, unread: usize) -> IconData {
 
 /// Draw a count for the Windows taskbar overlay and tray icon.
 fn badge_icon(unread: usize) -> IconData {
-    let mut image = image::RgbaImage::new(64, 64);
-    for y in 0_i32..64 {
-        for x in 0_i32..64 {
-            if (x - 31).pow(2) + (y - 31).pow(2) <= 31 * 31 {
-                image.put_pixel(x as u32, y as u32, image::Rgba([150, 12, 23, 255]));
+    // Render at twice the target size, then downsample for smooth circular edges.
+    let mut image = image::RgbaImage::new(128, 128);
+    for y in 0_i32..128 {
+        for x in 0_i32..128 {
+            if (x - 64).pow(2) + (y - 64).pow(2) <= 63 * 63 {
+                image.put_pixel(x as u32, y as u32, image::Rgba([255, 185, 45, 255]));
             }
         }
     }
-    const DIGITS: [[u8; 5]; 11] = [
-        [7, 5, 5, 5, 7],
-        [2, 6, 2, 2, 7],
-        [7, 1, 7, 4, 7],
-        [7, 1, 7, 1, 7],
-        [5, 5, 7, 1, 1],
-        [7, 4, 7, 1, 7],
-        [7, 4, 7, 5, 7],
-        [7, 1, 1, 1, 1],
-        [7, 5, 7, 5, 7],
-        [7, 5, 7, 1, 7],
-        [0, 2, 7, 2, 0],
+    const DIGITS: [[u8; 7]; 11] = [
+        [14, 17, 19, 21, 25, 17, 14],
+        [4, 12, 4, 4, 4, 4, 14],
+        [14, 17, 1, 2, 4, 8, 31],
+        [30, 1, 1, 14, 1, 1, 30],
+        [2, 6, 10, 18, 31, 2, 2],
+        [31, 16, 16, 30, 1, 1, 30],
+        [14, 16, 16, 30, 17, 17, 14],
+        [31, 1, 2, 4, 8, 8, 8],
+        [14, 17, 17, 14, 17, 17, 14],
+        [14, 17, 17, 15, 1, 1, 14],
+        [0, 4, 4, 31, 4, 4, 0],
     ];
     let label = if unread > 99 { "99+".to_string() } else { unread.to_string() };
-    let scale = 5_i32;
-    let width = (label.len() as i32 * 4 - 1) * scale;
-    let left = 32 - width / 2;
+    let scale = if label.len() > 2 { 6_i32 } else { 9_i32 };
+    let width = (label.len() as i32 * 6 - 1) * scale;
+    let left = 64 - width / 2;
     for (index, character) in label.chars().enumerate() {
         let digit = character.to_digit(10).map_or(10, |n| n as usize);
         for (row, bits) in DIGITS[digit].iter().enumerate() {
-            for col in 0..3 {
-                if bits & (1 << (2 - col)) != 0 {
+            for col in 0..5 {
+                if bits & (1 << (4 - col)) != 0 {
                     for dy in 0..scale {
                         for dx in 0..scale {
-                            let x = left + index as i32 * 4 * scale + col * scale + dx;
-                            let y = 19 + row as i32 * scale + dy;
-                            image.put_pixel(x as u32, y as u32, image::Rgba([255, 255, 255, 255]));
+                            let x = left + index as i32 * 6 * scale + col * scale + dx;
+                            let y = (128 - 7 * scale) / 2 + row as i32 * scale + dy;
+                            image.put_pixel(x as u32, y as u32, image::Rgba([35, 29, 19, 255]));
                         }
                     }
                 }
             }
         }
     }
+    let image = image::imageops::resize(&image, 64, 64, image::imageops::FilterType::Lanczos3);
     IconData { rgba: image.into_raw(), width: 64, height: 64 }
 }
