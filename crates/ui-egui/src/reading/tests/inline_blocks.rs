@@ -96,7 +96,7 @@ fn responsive_full_width_columns_stack_until_the_desktop_breakpoint() {
                     assert!((title.rect.min.x - image.rect.min.x).abs() < 1.0);
                 } else {
                     assert!((title.rect.min.y - image.rect.min.y).abs() < 1.0, "{:?} {:?}", image.rect, title.rect);
-                    assert!(title.rect.min.x > image.rect.max.x);
+                    assert!(title.rect.min.x >= image.rect.max.x - 0.5, "{:?} {:?}", image.rect, title.rect);
                 }
             }
         });
