@@ -1228,6 +1228,9 @@ pub struct MailApp {
     /// Set during a frame only when a main-pane HTML body is visible.
     #[cfg(windows)]
     pub native_html_pane: Option<NativeHtmlPane>,
+    /// The exact message whose native host failed, so the existing reader can take over.
+    #[cfg(windows)]
+    pub native_html_failed: Option<std::sync::Arc<mailcraft_model::Message>>,
     #[cfg(windows)]
     pub native_html_images: Option<NativeHtmlImages>,
     /// The Windows host has hidden the main window in the system tray.
@@ -1710,6 +1713,8 @@ impl MailApp {
             remote_pictures: Default::default(),
             #[cfg(windows)]
             native_html_pane: None,
+            #[cfg(windows)]
+            native_html_failed: None,
             #[cfg(windows)]
             native_html_images: None,
             sender_images: Default::default(),

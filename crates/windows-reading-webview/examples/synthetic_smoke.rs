@@ -36,9 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while Instant::now() < until {
         windows_window::pump();
         host.poll()?;
-        if host.loaded() { host.set_visible(true)?; }
         let found = host.image_requests();
-        if host.ready() && found.iter().any(|u| u.ends_with("/image.png")) && found.iter().any(|u| u.ends_with("/background.png")) {
+        if host.ready() && host.theme_ready() && found.iter().any(|u| u.ends_with("/image.png")) && found.iter().any(|u| u.ends_with("/background.png")) {
             assert!(!found.iter().any(|u| u.ends_with("/tracker.png")));
             success = true;
             break;

@@ -223,9 +223,14 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     }
     remote::tick(app, &ctx);
     select::begin(app, ui, m, place);
-    let doc = view::doc_shown(&ctx, m, place, remote::available(app), view::env_of(app, ui, place));
+    #[cfg(windows)]
+    let native = place == Place::Pane && m.body.html.is_some()
+        && !app.native_html_failed.as_ref().is_some_and(|failed| Arc::ptr_eq(failed, m));
+    #[cfg(not(windows))]
+    let native = false;
+    let doc = (!native).then(|| view::doc_shown(&ctx, m, place, remote::available(app), view::env_of(app, ui, place)));
     #[allow(unused_mut)]
-    let mut urls = doc.remote.clone();
+    let mut urls = doc.as_ref().map_or_else(Vec::new, |doc| doc.remote.clone());
     #[cfg(windows)]
     if place == Place::Pane
         && let Some(discovered) = app.native_html_images.as_ref().filter(|found| Arc::ptr_eq(&found.message, m))
@@ -239,7 +244,7 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     }
     let access = if urls.is_empty() { Access::Blocked } else { remote::access(app, m) };
     // Asked for: what has not come yet is sent for, while the message is on screen.
-    let progress = if access == Access::Allowed { remote::want_urls(app, &ctx, m, &urls, doc.remote_left_out) } else { remote::Progress::default() };
+    let progress = if access == Access::Allowed { remote::want_urls(app, &ctx, m, &urls, doc.as_ref().map_or(0, |doc| doc.remote_left_out)) } else { remote::Progress::default() };
     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
     // A draft in the reading pane is not received mail: say so, and offer to go on writing it (#651).
     if place == Place::Pane && m.draft {
@@ -286,7 +291,11 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     if place == Place::Pane && m.body.html.is_some() && room.is_positive() {
         app.native_html_pane = Some(crate::NativeHtmlPane { message: m.clone(), rect: room, access: remote::access(app, m), remote_urls: urls.clone(), pictures_waiting: progress.waiting, picture_cache_generation: app.remote_pictures.cache_generation, dark: Tokens::get(ui.ctx()).dark && !app.ui.light_messages });
     }
-    ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
+    if native {
+        let t = Tokens::get(&ctx);
+        let color = if t.dark && !app.ui.light_messages { t.panel } else { Tokens::light().surface };
+        ui.painter().rect_filled(room, 0.0, color);
+    } else { ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         view::page(app, place, ui).show(ui, |ui| {
             // Sideways too: a data table is never squeezed below its words, so a wide one scrolls.
             body_scroll().id_salt(("body", m.id)).show(ui, |ui| {
@@ -295,7 +304,7 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
                 });
             });
         });
-    });
+    }); }
     select::settle(app, ui, place);
 }
 

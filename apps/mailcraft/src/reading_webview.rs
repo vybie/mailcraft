@@ -28,6 +28,19 @@ struct Current {
 
 impl Pane {
     pub fn update(&mut self, app: &mut MailApp, ctx: &egui::Context, frame: &eframe::Frame) {
+        self.update_inner(app, ctx, frame);
+        let changed = match (&app.native_html_failed, &self.failed) {
+            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
+            (None, None) => false,
+            _ => true,
+        };
+        if changed {
+            app.native_html_failed = self.failed.clone();
+            ctx.request_repaint();
+        }
+    }
+
+    fn update_inner(&mut self, app: &mut MailApp, ctx: &egui::Context, frame: &eframe::Frame) {
         let Some(pane) = app.native_html_pane.take() else {
             self.current = None;
             app.native_html_images = None;
@@ -55,6 +68,7 @@ impl Pane {
         }
         let Some(current) = &mut self.current else { return };
         if current.dark != pane.dark {
+            let _ = current.host.hide();
             if current.host.set_dark(pane.dark).is_err() { self.failed = Some(pane.message); self.current = None; return; }
             current.dark = pane.dark;
         }
@@ -107,7 +121,7 @@ impl Pane {
             return;
         }
         let ready = current.host.ready();
-        if current.host.set_visible(current.host.loaded()).is_err() { self.failed = Some(pane.message); self.current = None; return; }
+        if current.host.set_visible(current.host.ready() && current.host.theme_ready()).is_err() { self.failed = Some(pane.message); self.current = None; return; }
         ctx.request_repaint_after(std::time::Duration::from_millis(if !ready || pane.pictures_waiting > 0 { 100 } else { 500 }));
     }
 
