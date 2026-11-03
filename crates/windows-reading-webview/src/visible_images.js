@@ -55,10 +55,49 @@
     seen.add(url);
     images.push({ url, width: dimensions.width, height: dimensions.height, kind });
   }
-  // Computed CSS is serialized by the browser. Walk URL tokens rather than splitting on commas:
-  // commas may appear inside quoted URLs, while strings outside url() are not image requests.
-  function backgrounds(css, dimensions) {
-    if (css.length > MAX_CSS) { truncated = true; return; }
+  // Split CSS layers only at top-level commas, never inside a URL or function.
+  function layers(css) {
+    const result = []; let start = 0, depth = 0, quote = null;
+    for (let i = 0; i < css.length; i++) {
+      const c = css[i];
+      if (c === "\\") { i++; continue; }
+      if (quote) { if (c === quote) quote = null; continue; }
+      if (c === '"' || c === "'") { quote = c; continue; }
+      if (c === "(") depth++;
+      else if (c === ")") { if (depth === 0) return []; depth--; }
+      else if (c === "," && depth === 0) { result.push(css.slice(start, i).trim()); start = i + 1; }
+    }
+    if (quote || depth !== 0) return [];
+    result.push(css.slice(start).trim());
+    return result;
+  }
+  // Computed lengths are normally pixels; percentages use the background positioning area.
+  // Unknown expressions are skipped rather than treating a possibly tiny layer as eligible.
+  function tinyOrUnknown(size, width, height) {
+    const parts = size.trim().toLowerCase().split(/\s+/);
+    if (parts.length === 1 && (parts[0] === "cover" || parts[0] === "contain")) return false;
+    if (parts.length < 1 || parts.length > 2) return true;
+    return parts.some((part, index) => {
+      if (part === "auto") return false;
+      const match = /^(\d+(?:\.\d+)?|\.\d+)(px|%)?$/.exec(part);
+      if (!match) return true;
+      const value = Number(match[1]);
+      if (!match[2] && value !== 0) return true;
+      const pixels = match[2] === "%" ? value * (index === 0 ? width : height) / 100 : value;
+      return !Number.isFinite(pixels) || pixels <= 2;
+    });
+  }
+  // Computed CSS is serialized by the browser. Strings outside url() are not image requests.
+  function backgrounds(css, sizes, dimensions, width, height) {
+    if (css.length > MAX_CSS || sizes.length > MAX_CSS) { truncated = true; return; }
+    const imagesByLayer = layers(css), sizesByLayer = layers(sizes);
+    if (!sizesByLayer.length) return;
+    for (let layer = 0; layer < imagesByLayer.length; layer++) {
+      if (tinyOrUnknown(sizesByLayer[layer % sizesByLayer.length], width, height)) continue;
+      backgroundLayer(imagesByLayer[layer], dimensions);
+    }
+  }
+  function backgroundLayer(css, dimensions) {
     let i = 0;
     while (i < css.length && images.length < MAX_IMAGES) {
       const c = css[i];
@@ -96,7 +135,13 @@
         const dimensions = visible(element);
         if (dimensions) {
           if (isImage) add(element.currentSrc || element.src, dimensions, "image");
-          backgrounds(getComputedStyle(element).backgroundImage, dimensions);
+          const style = getComputedStyle(element);
+          // The background positioning area may be the content box, which is smaller than
+          // clientWidth/clientHeight. Use that lower bound for percentage sizes.
+          const padding = name => parseFloat(style[name]) || 0;
+          const width = Math.max(0, element.clientWidth - padding("paddingLeft") - padding("paddingRight") - 1);
+          const height = Math.max(0, element.clientHeight - padding("paddingTop") - padding("paddingBottom") - 1);
+          backgrounds(style.backgroundImage, style.backgroundSize, dimensions, width, height);
         }
       }
       element = walker.nextNode();
