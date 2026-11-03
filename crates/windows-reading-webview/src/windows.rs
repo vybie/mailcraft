@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use crate::policy::Images;
-use windows_webview::{Controller, ControllerOptions, Environment, EnvironmentOptions, EventRegistration, PermissionState, WebResourceResponse, WebView};
+use windows_webview::{Color, Controller, ControllerOptions, Environment, EnvironmentOptions, EventRegistration, PermissionState, WebResourceResponse, WebView};
 
 const DOCUMENT: &str = "https://mailcraft.invalid/reading/document";
 const CSP: &str = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src http: https:; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-same-origin allow-popups allow-scripts";
@@ -25,6 +25,7 @@ pub struct Host {
     images: Rc<RefCell<Images>>,
     generation: u64,
     shown: std::cell::Cell<bool>,
+    navigation_started: std::cell::Cell<bool>,
     status: Rc<std::cell::Cell<i8>>,
     theme_failed: Rc<std::cell::Cell<bool>>,
     theme_generation: Rc<std::cell::Cell<u64>>,
@@ -136,14 +137,12 @@ impl Host {
         let process_status = status.clone();
         let wake_failure = wake.clone();
         let failed = view.on_process_failed(move |_| { process_status.set(-1); wake_failure(); }).map_err(|e| e.to_string())?;
-        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), status, theme_failed: Rc::new(std::cell::Cell::new(false)), theme_generation: Rc::new(std::cell::Cell::new(0)), theme_pending: Rc::new(std::cell::Cell::new(0)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
+        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), navigation_started: std::cell::Cell::new(false), status, theme_failed: Rc::new(std::cell::Cell::new(false)), theme_generation: Rc::new(std::cell::Cell::new(0)), theme_pending: Rc::new(std::cell::Cell::new(0)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
     }
 
     pub fn show(&self, html: &str, bounds: [i32; 4]) -> Result<(), String> {
         if self.shown.get() || html.len() > 2 * 1024 * 1024 || bounds[2] <= bounds[0] || bounds[3] <= bounds[1] { return Err("invalid document or bounds".into()); }
         *self.html.borrow_mut() = html.as_bytes().to_vec();
-        *self.allow_document.borrow_mut() = true;
-        self.view.navigate(DOCUMENT).map_err(|e| e.to_string())?;
         self.controller.set_bounds(bounds[0], bounds[1], bounds[2], bounds[3]).map_err(|e| e.to_string())?;
         self.shown.set(true);
         Ok(())
@@ -158,18 +157,27 @@ impl Host {
     pub fn ready(&self) -> bool { self.status.get() == 1 && self.inspected.get() }
     pub fn loaded(&self) -> bool { self.status.get() == 1 }
     pub fn theme_ready(&self) -> bool { self.theme_pending.get() == 0 && !self.theme_failed.get() }
+    #[cfg(debug_assertions)]
+    pub fn smoke_capture(&self, callback: impl FnOnce(Result<String, String>) + 'static) -> Result<(), String> {
+        self.view.call_dev_tools_protocol_method("Page.captureScreenshot", r#"{"format":"png"}"#, move |result| callback(result.map_err(|e| e.to_string()))).map_err(|e| e.to_string())
+    }
     pub fn failed(&self) -> bool { self.status.get() < 0 || self.theme_failed.get() }
     /// Re-request after validated images become available; no browser-side network is allowed.
     pub fn refresh(&self) -> Result<(), String> {
+        self.hide()?;
+        self.status.set(0);
+        self.inspected.set(false);
         let view = self.view.clone();
         let allow = self.allow_document.clone();
         let restore = self.restore_scroll.clone();
         let status = self.status.clone();
+        let inspected = self.inspected.clone();
         let wake = self.wake.clone();
         self.view.execute_script(SCROLL_POSITION, move |result| {
             let position = result.ok().and_then(|s| serde_json::from_str::<[f64; 4]>(&s).ok());
             let Some([x, y, _, _]) = position.filter(|a| a.iter().all(|v| v.is_finite())) else { status.set(-1); wake(); return; };
             restore.set(Some((x.clamp(-1_000_000.0, 1_000_000.0), y.clamp(-1_000_000.0, 1_000_000.0))));
+            inspected.set(false);
             *allow.borrow_mut() = true;
             if view.reload().is_err() { status.set(-1); }
             wake();
@@ -185,6 +193,8 @@ impl Host {
     /// Ask Chromium to adapt bright authored colors while preserving layout and image content.
     /// Sender dark-mode media queries follow MailCraft's effective message-body theme.
     pub fn set_dark(&self, dark: bool) -> Result<(), String> {
+        let value = if dark { 0x14 } else { 0xff };
+        self.controller.set_default_background_color(Color { r: value, g: value, b: value, a: 255 }).map_err(|e| e.to_string())?;
         let generation = self.theme_generation.get().wrapping_add(1);
         self.theme_generation.set(generation);
         self.theme_pending.set(2);
@@ -205,6 +215,11 @@ impl Host {
 
     /// Reclassify on initial load and when the browser's scroll position or viewport changes.
     pub fn poll(&self) -> Result<(), String> {
+        if self.shown.get() && !self.navigation_started.get() && self.theme_ready() {
+            *self.allow_document.borrow_mut() = true;
+            self.view.navigate(DOCUMENT).map_err(|e| e.to_string())?;
+            self.navigation_started.set(true);
+        }
         if self.status.get() != 1 || self.view.source() != DOCUMENT { return Ok(()); }
         if self.need_inspection.get() && !self.inspection_pending.get() {
             self.need_inspection.set(false);
