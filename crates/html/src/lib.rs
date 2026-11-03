@@ -36,6 +36,8 @@ mod sheet;
 mod style;
 mod text;
 mod tokenizer;
+/// Bounded extraction of local pictures for a separately secured browser host.
+pub mod webview_resources;
 
 use serde::{Deserialize, Serialize};
 
