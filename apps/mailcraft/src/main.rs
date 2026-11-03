@@ -92,6 +92,8 @@ mod token_renew_flow;
 mod tray;
 #[cfg(any(target_os = "windows", test))]
 mod tray_state;
+#[cfg(target_os = "windows")]
+mod reading_webview;
 #[cfg(test)]
 mod unconfirmed_flow;
 #[cfg(test)]
@@ -123,6 +125,7 @@ struct App(
     #[cfg(target_os = "macos")] fmv_macos_events::Inbox,
     #[cfg(target_os = "macos")] Option<menubar::MenuBar>,
     #[cfg(target_os = "windows")] Option<tray::Tray>,
+    #[cfg(target_os = "windows")] reading_webview::Pane,
 );
 
 /// A copy that updates itself (`self_update`): where it keeps what it needs, what it is, and what
@@ -218,7 +221,11 @@ impl eframe::App for App {
         self.0.raw_input_hook(raw);
     }
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        #[cfg(windows)]
+        { self.0.native_html_pane = None; }
         self.0.ui(ui);
+        #[cfg(windows)]
+        self.7.update(&mut self.0, ui.ctx(), frame);
         self.3.show(frame);
         open_pages(ui.ctx(), frame);
     }
@@ -2016,6 +2023,8 @@ fn main() -> eframe::Result {
                 updates,
                 #[cfg(target_os = "windows")]
                 tray::Tray::new(&cc.egui_ctx, app_icon()),
+                #[cfg(target_os = "windows")]
+                reading_webview::Pane::default(),
                 #[cfg(target_os = "macos")]
                 apple_events.connect(&cc.egui_ctx),
                 #[cfg(target_os = "macos")]

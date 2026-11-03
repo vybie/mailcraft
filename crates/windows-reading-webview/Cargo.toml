@@ -1,0 +1,15 @@
+[package]
+name = "mailcraft-windows-reading-webview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[target.'cfg(windows)'.dependencies]
+windows-webview = { path = "../../vendor/windows-webview", version = "=0.100.0" }
+raw-window-handle = "0.6"
+serde_json = { workspace = true }
+
+[target.'cfg(windows)'.dev-dependencies]
+winit = "0.30"
+windows-window = "=0.100.0"

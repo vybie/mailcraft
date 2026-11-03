@@ -175,6 +175,8 @@ use serde_json::{Value, json};
 
 pub use approval::{AdminConsentAnswer, AdminConsentRequest};
 pub use control::ControlRequest;
+#[cfg(windows)]
+pub use reading::Access as NativePictureAccess;
 pub use files::FileDialogRequest;
 pub use scheduling::{FreeBusyRequest, FreeBusyResult};
 pub use settings_notice::SettingsUnread;
@@ -1200,9 +1202,33 @@ pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ),
 ];
 
+/// The visible HTML body in the main reading pane, handed to the native Windows host.
+#[cfg(windows)]
+pub struct NativeHtmlPane {
+    pub message: std::sync::Arc<mailcraft_model::Message>,
+    pub rect: egui::Rect,
+    pub access: reading::Access,
+    /// The existing renderer's bounded, tracker-filtered remote image addresses.
+    pub remote_urls: Vec<std::sync::Arc<str>>,
+    pub pictures_waiting: usize,
+    pub picture_cache_generation: u64,
+}
+
+/// Browser-discovered, tracker-filtered URLs for the exact message currently displayed.
+#[cfg(windows)]
+pub struct NativeHtmlImages {
+    pub message: std::sync::Arc<mailcraft_model::Message>,
+    pub urls: Vec<String>,
+}
+
 /// The application.
 pub struct MailApp {
     pub session: Session,
+    /// Set during a frame only when a main-pane HTML body is visible.
+    #[cfg(windows)]
+    pub native_html_pane: Option<NativeHtmlPane>,
+    #[cfg(windows)]
+    pub native_html_images: Option<NativeHtmlImages>,
     /// The Windows host has hidden the main window in the system tray.
     pub hidden_in_tray: bool,
     pub ui: UiState,
@@ -1681,6 +1707,10 @@ impl MailApp {
             refused: None,
             windows: Default::default(),
             remote_pictures: Default::default(),
+            #[cfg(windows)]
+            native_html_pane: None,
+            #[cfg(windows)]
+            native_html_images: None,
             sender_images: Default::default(),
             text_selection: Default::default(),
             ran: (0, String::new(), Ok(Value::Null)),

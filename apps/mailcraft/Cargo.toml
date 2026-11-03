@@ -95,6 +95,8 @@ keyring-core = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle = "0.6"
+mailcraft-html = { workspace = true }
+mailcraft-windows-reading-webview = { path = "../../crates/windows-reading-webview" }
 mailcraft-windows-badge = { path = "../../crates/windows-badge" }
 # Native notification-area icon and menu, with no Linux or macOS backend.
 tray-icon = { version = "=0.26.1", default-features = false }

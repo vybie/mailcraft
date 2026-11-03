@@ -161,6 +161,39 @@ pub fn show(app: &mut MailApp, ui: &mut Ui) {
     show_message(app, ui, &m, Place::Pane);
 }
 
+#[cfg(windows)]
+impl MailApp {
+    /// An embedded image resolved only inside this message and checked against image limits.
+    pub fn native_cid_picture(message: &Message, cid: &str) -> Option<Arc<Vec<u8>>> {
+        let data = &images::attachment(message, cid)?.data;
+        images::probe(data).map(|_| data.clone())
+    }
+
+    /// The same image dimension and format check used by the native reader.
+    pub fn native_picture_valid(data: &[u8]) -> bool { images::probe(data).is_some() }
+
+    /// Return already validated picture bytes only while this exact message is still selected and
+    /// its current image permission allows them. The native host must never fetch a URL itself.
+    pub fn native_ready_pictures(&self, ctx: &egui::Context, message: &Arc<Message>, urls: &[String]) -> Vec<(String, Arc<Vec<u8>>)> {
+        if self.session.sel.focus() != Some(message.id)
+            || !self.session.mailbox.messages.get(&message.id).is_some_and(|current| Arc::ptr_eq(current, message))
+            || remote::access(self, message) != Access::Allowed
+        {
+            return Vec::new();
+        }
+        let pictures = images::Pictures::of(ctx);
+        let mut pictures = pictures.lock().unwrap_or_else(|e| e.into_inner());
+        let frame = images::frame(ctx);
+        urls.iter().take(remote::MAX_PER_MESSAGE).filter_map(|url| {
+            if !images::is_remote(url) || !mailcraft_html::is_safe_url(url) { return None; }
+            match pictures.remote(url, frame) {
+                Some(images::Remote::Ready(bytes)) => Some((url.clone(), bytes)),
+                _ => None,
+            }
+        }).collect()
+    }
+}
+
 /// The bar over a draft in the reading pane: it hasn't been sent, and the way to open it in the
 /// composer (the command `mail.editDraft`, as a double click runs it).
 fn draft_bar(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>) {
@@ -191,16 +224,29 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     remote::tick(app, &ctx);
     select::begin(app, ui, m, place);
     let doc = view::doc_shown(&ctx, m, place, remote::available(app), view::env_of(app, ui, place));
-    let access = if doc.remote.is_empty() { Access::Blocked } else { remote::access(app, m) };
+    #[allow(unused_mut)]
+    let mut urls = doc.remote.clone();
+    #[cfg(windows)]
+    if place == Place::Pane
+        && let Some(discovered) = app.native_html_images.as_ref().filter(|found| Arc::ptr_eq(&found.message, m))
+    {
+        for url in &discovered.urls {
+            if urls.len() >= remote::MAX_PER_MESSAGE { break; }
+            if images::is_remote(url) && mailcraft_html::is_safe_url(url) && !urls.iter().any(|u| &**u == url) {
+                urls.push(Arc::from(url.as_str()));
+            }
+        }
+    }
+    let access = if urls.is_empty() { Access::Blocked } else { remote::access(app, m) };
     // Asked for: what has not come yet is sent for, while the message is on screen.
-    let progress = if access == Access::Allowed { remote::want(app, &ctx, m, &doc) } else { remote::Progress::default() };
+    let progress = if access == Access::Allowed { remote::want_urls(app, &ctx, m, &urls, doc.remote_left_out) } else { remote::Progress::default() };
     ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
     // A draft in the reading pane is not received mail: say so, and offer to go on writing it (#651).
     if place == Place::Pane && m.draft {
         draft_bar(app, ui, m);
     }
     header(app, ui, m, place, |app, ui, t| {
-        remote::line(app, ui, m, &doc, access, progress, place, t);
+        remote::line(app, ui, m, !urls.is_empty(), access, progress, place, t);
         unreadable_line(ui, m, t);
     });
     // A meeting that came with the message: what it is, and the ways to answer it.
@@ -236,6 +282,10 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     // The body gets the part of the pane that can be seen, whatever was laid out above it: a
     // header too wide for a narrow pane must not make the text run out of sight with it.
     let room = ui.available_rect_before_wrap().intersect(ui.clip_rect());
+    #[cfg(windows)]
+    if place == Place::Pane && m.body.html.is_some() && room.is_positive() {
+        app.native_html_pane = Some(crate::NativeHtmlPane { message: m.clone(), rect: room, access: remote::access(app, m), remote_urls: urls.clone(), pictures_waiting: progress.waiting, picture_cache_generation: app.remote_pictures.cache_generation });
+    }
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         view::page(app, place, ui).show(ui, |ui| {
             // Sideways too: a data table is never squeezed below its words, so a wide one scrolls.

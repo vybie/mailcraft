@@ -143,6 +143,7 @@ pub struct RemotePictures {
     retry: Vec<Id>,
     /// The owner cleared what is kept of pictures: what is in memory goes at the next frame.
     forget_all: bool,
+    pub(crate) cache_generation: u64,
 }
 
 impl RemotePictures {
@@ -318,8 +319,13 @@ pub fn tick(app: &mut MailApp, ctx: &egui::Context) {
 /// `m` is on screen and may show its pictures: note which of them are still to come, so that
 /// they are asked for, and say how they are coming along.
 pub fn want(app: &mut MailApp, ctx: &egui::Context, m: &Message, doc: &Doc) -> Progress {
-    let mut progress = Progress { total: doc.remote.len().saturating_add(doc.remote_left_out), left_out: doc.remote_left_out, ..Progress::default() };
-    if doc.remote.is_empty() {
+    want_urls(app, ctx, m, &doc.remote, doc.remote_left_out)
+}
+
+/// Queue a visible message's discovered image URLs through the same limits and permission path.
+pub(crate) fn want_urls(app: &mut MailApp, ctx: &egui::Context, m: &Message, urls: &[Arc<str>], left_out: usize) -> Progress {
+    let mut progress = Progress { total: urls.len().saturating_add(left_out), left_out, ..Progress::default() };
+    if urls.is_empty() || access(app, m) != Access::Allowed {
         return progress;
     }
     let frame = images::frame(ctx);
@@ -330,7 +336,7 @@ pub fn want(app: &mut MailApp, ctx: &egui::Context, m: &Message, doc: &Doc) -> P
     if let Some(at) = app.remote_pictures.retry.iter().position(|id| *id == m.id) {
         app.remote_pictures.retry.swap_remove(at);
         let mut again = 0;
-        for url in &doc.remote {
+        for url in urls {
             if pictures.forget_failure(url) {
                 again += 1;
                 if let Some(kept) = &app.services.picture_cache {
@@ -342,7 +348,7 @@ pub fn want(app: &mut MailApp, ctx: &egui::Context, m: &Message, doc: &Doc) -> P
     }
     let state = &mut app.remote_pictures;
     let out = state.spent(m.id).out();
-    for url in &doc.remote {
+    for url in urls {
         match pictures.remote(url, frame) {
             Some(Remote::Ready(_)) => progress.ready += 1,
             Some(Remote::Failed(_)) => progress.failed += 1,
@@ -379,8 +385,8 @@ pub(crate) fn notice(hue: Color32, t: &Tokens) -> egui::Frame {
 /// owner can do about it, how downloading them is going, or how many could not be had. One
 /// glance says which: a tinted strip the width of the header, a mark, a few words in bold, the
 /// rest after them.
-pub fn line(app: &mut MailApp, ui: &mut Ui, m: &Message, doc: &Doc, access: Access, progress: Progress, place: Place, t: &Tokens) {
-    if doc.remote.is_empty() {
+pub fn line(app: &mut MailApp, ui: &mut Ui, m: &Message, has_remote: bool, access: Access, progress: Progress, place: Place, t: &Tokens) {
+    if !has_remote {
         return;
     }
     let missing = progress.failed + progress.left_out;
@@ -640,6 +646,7 @@ fn clear(app: &mut MailApp) -> Result<Value, String> {
         None => 0,
     };
     app.remote_pictures.forget_all = true;
+    app.remote_pictures.cache_generation = app.remote_pictures.cache_generation.wrapping_add(1);
     app.sender_images = Default::default();
     Ok(json!({"cleared": on_disk}))
 }
