@@ -1383,3 +1383,67 @@ fn an_hr_with_the_hidden_attribute_is_not_drawn() {
     assert_eq!(rules("<p>a</p><hr hidden><p>b</p>"), 0);
     assert_eq!(rules("<p>a</p><hr style='display:none'><p>b</p>"), 0);
 }
+
+#[test]
+fn background_picture_keeps_a_safe_cell_and_its_full_cell_link() {
+    let html = r#"<div><div style='display:inline-block;width:300px'><table><tr>
+      <td class='two-col-image' width='100%' height='187' background='https://img.example/Old.jpg'
+      style="background-image:url('https://img.example/Story.JPG?Token=ABC');background-repeat:no-repeat;background-size:cover;background-position:center;width:100%;height:187px;"
+      style='background-repeat:no-repeat;background-size:cover;background-position:center;width:100%;height:187px;'>
+      <a href='https://news.example/story' style='display:block;width: 100%;height:100%;'></a></td></tr></table></div></div>"#;
+    let blocks = parse(html);
+    fn image_cell(blocks: &[Block]) -> Option<&Cell> {
+        blocks.iter().find_map(|block| match &block.kind {
+            BlockKind::Table(table) => table
+                .rows
+                .iter()
+                .flat_map(|row| &row.cells)
+                .find_map(|cell| if cell.background_image.is_some() { Some(cell) } else { image_cell(&cell.blocks) }),
+            _ => None,
+        })
+    }
+    let cell = image_cell(&blocks).expect("background cell disappeared");
+    assert_eq!(cell.background_image.as_deref(), Some("https://img.example/Story.JPG?Token=ABC"));
+    assert_eq!(cell.background_link.as_deref(), Some("https://news.example/story"));
+    assert_eq!(cell.height, Some(187));
+    let attr = parse("<table><tr><td height='187' background='//img.example/p.png'></td></tr></table>");
+    let BlockKind::Table(table) = &attr[0].kind else { panic!() };
+    assert_eq!(table.rows[0].cells[0].background_image.as_deref(), Some("https://img.example/p.png"));
+    for anchor in [
+        "<a href='javascript:evil' style='display:block;width:100%;height:100%'></a>",
+        "<a hidden href='https://news.example/' style='display:block;width:100%;height:100%'></a>",
+        "<a href='https://news.example/' style='display:none;width:100%;height:100%'></a>",
+    ] {
+        let blocks = parse(&format!("<table><tr><td height='187' background='https://img.example/a.png'>{anchor}</td></tr></table>"));
+        let BlockKind::Table(table) = &blocks[0].kind else { panic!() };
+        assert_eq!(table.rows[0].cells[0].background_link, None, "{anchor}");
+    }
+}
+
+#[test]
+fn background_picture_rejects_hidden_tiny_and_unsafe_sources() {
+    for cell in [
+        "<td height='1' background='https://img.example/tracker'></td>",
+        "<td width='2' height='187' background='https://img.example/tracker'></td>",
+        "<td height='187' style='width:1px;background-image:url(https://img.example/tracker)'></td>",
+        "<td style='height:2px;background-image:url(https://img.example/tracker)'></td>",
+        "<td width='300' height='187' style='width:1px;background-image:url(https://img.example/tracker)'></td>",
+        "<td width='300' height='187' style='height:1px;background-image:url(https://img.example/tracker)'></td>",
+        "<td hidden height='187' background='https://img.example/hidden'>x</td>",
+        "<td style='display:none;background-image:url(https://img.example/hidden)' height='187'>x</td>",
+        "<td height='187' background='file:///private'>x</td>",
+        "<td height='187' style='background-image:url(javascript:evil)'>x</td>",
+        "<td height='187' background='https://img.example/old' style='background-image:none'>x</td>",
+    ] {
+        let blocks = parse(&format!("<table><tr>{cell}</tr></table>"));
+        fn has_background(blocks: &[Block]) -> bool {
+            blocks.iter().any(|block| match &block.kind {
+                BlockKind::Table(table) => {
+                    table.rows.iter().flat_map(|row| &row.cells).any(|cell| cell.background_image.is_some() || has_background(&cell.blocks))
+                }
+                _ => false,
+            })
+        }
+        assert!(!has_background(&blocks), "{cell}");
+    }
+}

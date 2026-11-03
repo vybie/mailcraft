@@ -1370,6 +1370,95 @@ fn says(harness: &Window, text: &str) -> bool {
 }
 
 #[test]
+fn background_picture_uses_permission_keeps_height_and_the_story_link() {
+    let html = r#"<p>Digest</p><div><div style='display:inline-block;width:320px'>
+        <table role='presentation' width='100%' cellspacing='0'><tr>
+        <td class='two-col-image' width='100%' height='187' background='https://img.example/Story.jpg'
+        style="background-image:url('https://img.example/Story.jpg');background-repeat:no-repeat;background-size:cover;background-position:center;width:100%;height:187px;"
+        style='background-repeat:no-repeat;background-size:cover;background-position:center;width:100%;height:187px;'>
+        <a href='https://news.example/story' style='display:block;width: 100%;height:100%;'></a></td></tr></table></div></div>
+        <table><tr><td width='1' height='1' background='https://img.example/tracker'></td></tr></table>"#;
+    for theme in ["light", "dark"] {
+        let m = html_message(90, ("Digest", "digest@example.org"), "Digest", html);
+        let (mut app, ids) = app_with(vec![m]);
+        app.execute("ui.theme", json!({"value": theme})).unwrap();
+        let host = Host::answering(&mut app, |_| Ok(png(640, 320)));
+        let mut harness = window(app, (1280.0, 1000.0));
+        select(&mut harness, ids[0]);
+        assert!(host.asked().is_empty());
+        let state = |h: &Window| {
+            super::view::kept(&h.ctx, ids[0], |laid, _| {
+                let item = laid.items.iter().find(|item| matches!(item.kind, ItemKind::BackgroundPicture { .. })).unwrap();
+                let ItemKind::BackgroundPicture { data, link } = &item.kind else { panic!() };
+                (
+                    item.rect,
+                    data.is_some(),
+                    link.as_deref().map(str::to_string),
+                    laid.segs.contains(&(laid.items.iter().position(|i| std::ptr::eq(i, item)).unwrap() as u32)),
+                )
+            })
+            .unwrap()
+        };
+        let before = state(&harness);
+        assert!((before.0.height() - 187.0).abs() < 1.0 && !before.1 && !before.3, "{before:?}");
+        assert_eq!(before.2.as_deref(), Some("https://news.example/story"));
+        let download = harness.state().hit.rect("downloadPictures", ids[0]).unwrap();
+        click_at(&mut harness, download.center());
+        harness.run_steps(20);
+        assert_eq!(host.asked(), ["https://img.example/Story.jpg"]);
+        let after = state(&harness);
+        assert_eq!(before.0, after.0);
+        assert!(after.1 && !after.3);
+        assert_eq!(after.2, before.2);
+        // Clicking the otherwise empty, full-cell anchor follows its real destination.
+        let pos = super::view::kept(&harness.ctx, ids[0], |laid, origin| {
+            laid.items.iter().find(|item| matches!(item.kind, ItemKind::BackgroundPicture { .. })).unwrap().rect.translate(origin.to_vec2()).center()
+        })
+        .unwrap();
+        harness.event(egui::Event::PointerMoved(pos));
+        harness.step();
+        let mut opened = Vec::new();
+        for pressed in [true, false] {
+            harness.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+            harness.step();
+            opened.extend(harness.output().platform_output.commands.iter().filter_map(|command| match command {
+                egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
+                _ => None,
+            }));
+        }
+        assert_eq!(opened, ["https://news.example/story"]);
+    }
+}
+
+#[test]
+fn background_picture_cover_is_centered_without_distortion() {
+    let wide = super::view::background_uv([400, 200], egui::vec2(100.0, 100.0));
+    assert_eq!(wide, egui::Rect::from_min_max(egui::pos2(0.25, 0.0), egui::pos2(0.75, 1.0)));
+    let tall = super::view::background_uv([200, 400], egui::vec2(100.0, 100.0));
+    assert_eq!(tall, egui::Rect::from_min_max(egui::pos2(0.0, 0.25), egui::pos2(1.0, 0.75)));
+}
+
+#[test]
+fn background_picture_addresses_share_the_existing_message_limit() {
+    let mut html = String::new();
+    for n in 0..super::remote::MAX_PER_MESSAGE + 5 {
+        html.push_str(&format!("<table><tr><td height='187' background='https://img.example/{n}.png'></td></tr></table>"));
+    }
+    html.push_str("<table><tr><td width='1' height='1' background='https://img.example/tracker'></td></tr></table>");
+    let doc = Doc::from_blocks(mailcraft_html::parse(&html));
+    assert_eq!(doc.remote.len(), super::remote::MAX_PER_MESSAGE);
+    assert_eq!(doc.remote_left_out, 5);
+    assert!(doc.remote.iter().all(|url| !url.contains("tracker")));
+    // A tiny image block that reaches the reader is counted but never fetched, as before.
+    let tiny = mailcraft_html::Block::new(
+        mailcraft_html::BlockKind::Image { src: "https://img.example/pixel".into(), width: Some(1), height: Some(1), link: None, data: None },
+        Vec::new(),
+    );
+    let doc = Doc::from_blocks(vec![tiny]);
+    assert_eq!((doc.remote_pictures, doc.remote.len()), (1, 0));
+}
+
+#[test]
 fn pictures_on_the_web_are_placeholders_until_the_owner_asks() {
     for theme in ["light", "dark"] {
         let (mut app, ids) = corpus_app(false);

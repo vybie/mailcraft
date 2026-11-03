@@ -427,6 +427,9 @@ struct CellBuild {
     colspan: u16,
     rowspan: u16,
     background: Option<Rgb>,
+    background_image: Option<String>,
+    background_link: Option<String>,
+    height: Option<u16>,
     width: Option<Length>,
     border: Sides,
     lines: [Line; 4],
@@ -1383,13 +1386,23 @@ impl Builder {
         frame.box_space = false;
     }
 
-    fn end_cell(&mut self, cell: CellBuild, blocks: Vec<Block>) {
+    fn end_cell(&mut self, mut cell: CellBuild, blocks: Vec<Block>) {
+        // This path covers image cards with an empty overlay link. It does not put unknown
+        // pixels behind message text, whose readability is checked against a solid colour.
+        if !blocks.is_empty() {
+            cell.background_image = None;
+            cell.background_link = None;
+            cell.height = None;
+        }
         let cell = Cell {
             blocks,
             header: cell.header,
             colspan: cell.colspan,
             rowspan: cell.rowspan,
             background: cell.background,
+            background_image: cell.background_image,
+            background_link: cell.background_link,
+            height: cell.height,
             width: cell.width,
             border: cell.border,
             lines: cell.lines,
@@ -1439,7 +1452,7 @@ impl Builder {
             return;
         }
         let mut rows = table.rows;
-        let empty = |cell: &Cell| cell.blocks.is_empty() && cell.background.is_none() && !cell.border.any();
+        let empty = |cell: &Cell| cell.blocks.is_empty() && cell.background.is_none() && cell.background_image.is_none() && !cell.border.any();
         // Rows and columns that only make room make none here.
         rows.retain(|r| !r.cells.iter().all(empty));
         let nested = rows.iter().flat_map(|r| &r.cells).any(|c| c.blocks.iter().any(|b| matches!(b.kind, BlockKind::Table(_))));
@@ -1493,7 +1506,10 @@ impl Builder {
         if layout
             && plain
             && !slices
-            && rows.iter().all(|r| r.cells.len() == 1 && r.cells.iter().all(|c| c.background.is_none() && !c.border.any() && c.width.is_none()))
+            && rows.iter().all(|r| {
+                r.cells.len() == 1
+                    && r.cells.iter().all(|c| c.background.is_none() && c.background_image.is_none() && !c.border.any() && c.width.is_none())
+            })
         {
             for (i, row) in rows.into_iter().enumerate() {
                 for mut cell in row.cells {
@@ -1675,11 +1691,36 @@ impl Builder {
         self.flush();
         let css = css_of(tag);
         let span = |name: &str, max: u16| tag.attr(name).and_then(|v| v.trim().parse::<u32>().ok()).map_or(1, |n| n.clamp(1, u32::from(max)) as u16);
+        // Only literal web addresses in the cell's own attribute or inline style are used.
+        // The normal picture permission and download limits apply later in the reader.
+        let attr_picture = || {
+            picture_url(tag.attr("background")).filter(|url| {
+                url.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("http://")) || url.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://"))
+            })
+        };
+        let background_image = tag.attr("style").and_then(|style| style::background_picture(&style)).unwrap_or_else(attr_picture);
+        let attr_height = tag.attr("height").and_then(|v| style::attr_px(&v));
+        let attr_width = tag.attr("width").and_then(|v| style::attr_px(&v));
+        let height = css.height.or(attr_height).filter(|v| v.is_finite() && *v > 2.0).map(|v| v.round().clamp(3.0, MAX_IMAGE_PX) as u16);
+        let tiny = |v: Option<f32>| v.is_some_and(|v| v <= 2.0);
+        let background_image = background_image.filter(|_| {
+            height.is_some()
+                && self.hidden == 0
+                && !css.hidden
+                && !tag.has("hidden")
+                && !tiny(attr_height)
+                && !tiny(css.height)
+                && !tiny(attr_width)
+                && !tiny(css.width)
+        });
         let build = CellBuild {
             header,
             colspan: span("colspan", MAX_TABLE_COLUMNS as u16),
             rowspan: span("rowspan", MAX_ROW_SPAN),
             background: css.background.or_else(|| tag.attr("bgcolor").and_then(|c| style::attr_color(&c))).filter(|bg| Some(*bg) != self.backdrop()),
+            height: background_image.as_ref().and(height),
+            background_image,
+            background_link: None,
             width: sized(&css, tag.attr("width").and_then(|w| style::attr_length(&w))),
             border: {
                 let [top, right, bottom, left] = css.borders;
@@ -2094,6 +2135,39 @@ impl Builder {
                     None => safe_url(tag.attr("href")),
                 }
                 .map(Rc::from);
+                // A direct, full-cell block link is how some senders make an otherwise empty
+                // background picture clickable. Keep only a safe, visible link.
+                if self.hidden == 0
+                    && !tag.has("hidden")
+                    && !css_of(tag).hidden
+                    && let Some(href) = link.as_deref()
+                    && let Some(style) = tag.attr("style")
+                {
+                    let mut block = false;
+                    let mut width = false;
+                    let mut height = false;
+                    for (key, value) in style::declarations(truncate(&style, 4096)).take(64) {
+                        let value = style::strip_important(value).0.trim();
+                        if key.eq_ignore_ascii_case("display") {
+                            block = value.eq_ignore_ascii_case("block");
+                        }
+                        if key.eq_ignore_ascii_case("width") {
+                            width = value == "100%";
+                        }
+                        if key.eq_ignore_ascii_case("height") {
+                            height = value == "100%";
+                        }
+                    }
+                    if block
+                        && width
+                        && height
+                        && let Some(Node { kind: Kind::Cell(cell), .. }) = self.nodes.last_mut()
+                        && cell.background_image.is_some()
+                        && cell.background_link.is_none()
+                    {
+                        cell.background_link = Some(href.to_string());
+                    }
+                }
                 // A link has the reader's link colour unless it names one itself.
                 let color = link.is_some().then_some(None);
                 self.open_inline("a", true, tag, Delta { link: Some(link), color, ..Delta::default() });

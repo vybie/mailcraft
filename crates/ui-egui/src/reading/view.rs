@@ -113,19 +113,14 @@ impl Doc {
     pub(super) fn from_blocks(blocks: Vec<Block>) -> Doc {
         let mut doc = Doc::default();
         let mut seen = HashSet::new();
-        for picture in mailcraft_html::images(&blocks) {
-            let BlockKind::Image { src, width, height, .. } = &picture.kind else { continue };
+        fn add(doc: &mut Doc, seen: &mut HashSet<String>, src: &str) {
+            let src = src.trim();
             if mailcraft_html::is_embedded(src) {
-                continue;
+                return;
             }
             doc.remote_pictures += 1;
-            // A picture that says it is two pixels or less is there to be counted, not seen (the
-            // parser drops those; this is the second look). Nor is anything asked for that is
-            // not on the web.
-            let tiny = |v: &Option<u16>| v.is_some_and(|v| v <= 2);
-            let src = src.trim();
-            if tiny(width) || tiny(height) || !images::is_remote(src) || !seen.insert(src) {
-                continue;
+            if !images::is_remote(src) || !mailcraft_html::is_safe_url(src) || !seen.insert(src.to_string()) {
+                return;
             }
             if doc.remote.len() < super::remote::MAX_PER_MESSAGE {
                 doc.remote.push(Arc::from(src));
@@ -133,6 +128,32 @@ impl Doc {
                 doc.remote_left_out += 1;
             }
         }
+        fn walk(doc: &mut Doc, seen: &mut HashSet<String>, blocks: &[Block]) {
+            for block in blocks {
+                match &block.kind {
+                    BlockKind::Image { src, width, height, .. } => {
+                        let tiny = |v: &Option<u16>| v.is_some_and(|v| v <= 2);
+                        if tiny(width) || tiny(height) {
+                            if !mailcraft_html::is_embedded(src) {
+                                doc.remote_pictures += 1;
+                            }
+                        } else {
+                            add(doc, seen, src);
+                        }
+                    }
+                    BlockKind::Table(table) => {
+                        for cell in table.rows.iter().flat_map(|row| &row.cells) {
+                            if let Some(src) = &cell.background_image {
+                                add(doc, seen, src);
+                            }
+                            walk(doc, seen, &cell.blocks);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        walk(&mut doc, &mut seen, &blocks);
         let (blocks, cuts) = in_pieces(blocks);
         doc.blocks = blocks;
         doc.cuts = cuts.into();
@@ -693,6 +714,21 @@ pub fn paint(
                 }
                 painter.galley(at, galley, t.text);
             }
+            ItemKind::BackgroundPicture { data, link } => {
+                if let Some(data) = data {
+                    let store = pictures.get_or_insert_with(|| Pictures::of(&ctx));
+                    match store.lock().unwrap_or_else(|e| e.into_inner()).texture(&ctx, data, rect.size()) {
+                        Picture::Ready(texture) => {
+                            painter.image(texture.id(), rect, background_uv(texture.size(), rect.size()), Color32::WHITE);
+                        }
+                        Picture::Pending => ctx.request_repaint(),
+                        Picture::Failed => {}
+                    }
+                }
+                if over.is_some() && link.is_some() {
+                    hover = Some(Hover { link: link.clone(), note: None });
+                }
+            }
             ItemKind::Picture(picture) => {
                 let store = pictures.get_or_insert_with(|| Pictures::of(&ctx));
                 let state = store.lock().unwrap_or_else(|e| e.into_inner()).texture(&ctx, &picture.data, rect.size());
@@ -782,6 +818,14 @@ pub fn paint(
         ctx.open_url(egui::OpenUrl::new_tab(url.to_string()));
     }
     (area.min, asked)
+}
+
+/// Centre-crop a picture to cover a cell without changing its aspect ratio.
+pub(super) fn background_uv(size: [usize; 2], target: egui::Vec2) -> Rect {
+    let aspect = size[0].max(1) as f32 / size[1].max(1) as f32;
+    let box_aspect = target.x.max(1.0) / target.y.max(1.0);
+    let (u, v) = if aspect > box_aspect { (box_aspect / aspect, 1.0) } else { (1.0, aspect / box_aspect) };
+    Rect::from_center_size(pos2(0.5, 0.5), vec2(u.clamp(0.0, 1.0), v.clamp(0.0, 1.0)))
 }
 
 /// The most characters of a link's address, and of a picture's description, that a tip shows.

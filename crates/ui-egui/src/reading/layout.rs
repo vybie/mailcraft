@@ -165,6 +165,11 @@ pub enum ItemKind {
         depth: u8,
         color: Color32,
     },
+    /// A non-selectable cell background, with an optional full-cell link.
+    BackgroundPicture {
+        data: Option<Arc<Vec<u8>>>,
+        link: Option<Arc<str>>,
+    },
     Picture(PictureItem),
     Placeholder(PlaceholderItem),
 }
@@ -1803,7 +1808,7 @@ fn table_block(cx: &mut Cx<'_>, table: &Table, align: Align, x: f32, y: f32, roo
     // Rows from the top; a cell that spans rows ends with the last of them.
     let mut tops = Vec::with_capacity(grid.rows);
     let mut bottoms: Vec<f32> = Vec::with_capacity(grid.rows);
-    let mut done: Vec<(usize, Option<usize>, Paper, f32)> = Vec::with_capacity(grid.cells.len());
+    let mut done: Vec<(usize, Option<usize>, Option<usize>, Paper, f32)> = Vec::with_capacity(grid.cells.len());
     let mut next = 0;
     let mut top = y;
     for row in 0..grid.rows {
@@ -1821,10 +1826,12 @@ fn table_block(cx: &mut Cx<'_>, table: &Table, align: Align, x: f32, y: f32, roo
             let pad = padding(table, ruled, placed.cell);
             let (inside, own) = cell_paper(cx, table, placed.cell, around);
             let slot = own.then(|| cx.slot());
+            let image_slot = placed.cell.background_image.as_ref().map(|_| cx.slot());
             let width = (right - left - pad.across()).max(MIN_CELL.min(right - left));
-            let bottom =
-                flow(cx, &placed.cell.blocks, left + pad.left.min((right - left) / 2.0), top + pad.top, width, inside, depth + 1) + pad.bottom;
-            done.push((next, slot, inside, bottom));
+            let bottom = (flow(cx, &placed.cell.blocks, left + pad.left.min((right - left) / 2.0), top + pad.top, width, inside, depth + 1)
+                + pad.bottom)
+                .max(top + placed.cell.height.map_or(0.0, f32::from));
+            done.push((next, slot, image_slot, inside, bottom));
             // ponytail: a cell spanning rows stays at the top; place it once the last row is known if senders need it.
             let single = placed.rows == 1;
             let alone = single && !placed.cell.blocks.iter().any(|b| matches!(b.kind, BlockKind::Table(_)));
@@ -1837,7 +1844,7 @@ fn table_block(cx: &mut Cx<'_>, table: &Table, align: Align, x: f32, y: f32, roo
         across.end(cx);
         let bottom = done
             .iter()
-            .filter_map(|(index, _, _, bottom)| grid.cells.get(*index).filter(|p| p.row + p.rows - 1 == row).map(|_| *bottom))
+            .filter_map(|(index, _, _, _, bottom)| grid.cells.get(*index).filter(|p| p.row + p.rows - 1 == row).map(|_| *bottom))
             .fold(top, f32::max);
         // A cell the source places goes there; its own fill is painted later, over the whole cell.
         for (items, slot, cell_bottom, valign) in told {
@@ -1875,7 +1882,7 @@ fn table_block(cx: &mut Cx<'_>, table: &Table, align: Align, x: f32, y: f32, roo
     }
     let bottom = bottoms.last().copied().unwrap_or(y);
     let single = grid.cells.len() == 1 && table.width.is_none();
-    for (index, slot, inside, _) in done {
+    for (index, slot, image_slot, inside, _) in done {
         let Some(placed) = grid.cells.get(index) else { continue };
         let (left, right) = span(placed.col, placed.cols);
         let (Some(top), Some(low)) = (tops.get(placed.row), bottoms.get(placed.row + placed.rows - 1)) else { continue };
@@ -1890,6 +1897,9 @@ fn table_block(cx: &mut Cx<'_>, table: &Table, align: Align, x: f32, y: f32, roo
                 0.0
             };
             cx.fill_slot(slot, rect, inside.fill, radius);
+        }
+        if let Some(slot) = image_slot {
+            background_picture(cx, slot, placed.cell, rect);
         }
         let sides = if table.border { Sides::ALL } else { placed.cell.border };
         let look = edges_of(&cx.t, &placed.cell.lines, sides, around);
@@ -1911,6 +1921,25 @@ fn table_block(cx: &mut Cx<'_>, table: &Table, align: Align, x: f32, y: f32, roo
         cell_lines(cx, whole, look, Sides::ALL, f32::from(table.radius));
     }
     bottom
+}
+
+/// Fill a reserved background slot after its cell's final rectangle is known. It is not a
+/// selection segment, and the data is available only after the owner's permission.
+fn background_picture(cx: &mut Cx<'_>, slot: usize, cell: &Cell, rect: Rect) {
+    let data = if cx.remote && cx.stats.pictures < images::MAX_PICTURES_PER_MESSAGE {
+        cell.background_image.as_deref().and_then(|src| match cx.pictures.remote(src, cx.frame) {
+            Some(images::Remote::Ready(bytes)) => Some(bytes),
+            _ => None,
+        })
+    } else {
+        None
+    };
+    if data.is_some() {
+        cx.stats.pictures += 1;
+    }
+    if let Some(item) = cx.items.get_mut(slot) {
+        *item = Item { rect, kind: ItemKind::BackgroundPicture { data, link: cell.background_link.as_deref().map(Arc::from) }, seg: NO_SEG };
+    }
 }
 
 /// Whether what a cell pushed is one line: texts of one line each and pictures, side by side.
@@ -1956,6 +1985,7 @@ fn stacked(cx: &mut Cx<'_>, table: &Table, x: f32, y: f32, room: f32, paper: Pap
             let pad = padding(table, ruled, cell);
             let (inside, own) = cell_paper(cx, table, cell, around);
             let slot = own.then(|| cx.slot());
+            let image_slot = cell.background_image.as_ref().map(|_| cx.slot());
             let width = (room - pad.across()).max(MIN_CELL.min(room));
             let bottom = if depth >= MAX_NESTING {
                 // Too deep to go on: what is in the cell is not laid out.
@@ -1963,9 +1993,13 @@ fn stacked(cx: &mut Cx<'_>, table: &Table, x: f32, y: f32, room: f32, paper: Pap
             } else {
                 flow(cx, &cell.blocks, x + pad.left.min(room / 2.0), at + pad.top, width, inside, depth + 1) + pad.bottom
             };
+            let bottom = bottom.max(at + cell.height.map_or(0.0, f32::from));
             let rect = Rect::from_min_max(pos2(x, at), pos2(x + room, bottom));
             if let Some(slot) = slot {
                 cx.fill_slot(slot, rect, inside.fill, f32::from(cell.radius));
+            }
+            if let Some(slot) = image_slot {
+                background_picture(cx, slot, cell, rect);
             }
             let look = edges_of(&cx.t, &cell.lines, if table.border { Sides::ALL } else { cell.border }, around);
             cell_lines(cx, rect, look, Sides::ALL, f32::from(cell.radius));

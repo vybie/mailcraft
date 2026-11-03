@@ -444,6 +444,15 @@ pub struct Cell {
     pub colspan: u16,
     pub rowspan: u16,
     pub background: Option<Rgb>,
+    /// A web background on a cell, fetched only with the owner's picture permission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_image: Option<String>,
+    /// A full-cell link explicitly written over the background.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_link: Option<String>,
+    /// A cell's requested height, bounded in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u16>,
     pub width: Option<Length>,
     /// The sides the cell asks to have a line on. Whether, never how thick or what colour.
     #[serde(default)]
@@ -470,6 +479,9 @@ impl Default for Cell {
             colspan: 1,
             rowspan: 1,
             background: None,
+            background_image: None,
+            background_link: None,
+            height: None,
             width: None,
             border: Sides::default(),
             lines: [Line::default(); 4],

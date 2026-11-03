@@ -51,8 +51,9 @@ Writes any bytes into a message: crafted MIME, HTML, headers, attachments, pictu
   WebP by its declared type and its own bytes (never SVG, HTML or text), decoded within caps
   checked before decoding (10 MB a picture, 32 pictures and 40 MB a message), anything else a
   placeholder; a `data:` address is never a link nor a background (`crates/html/src/data.rs`).
-  Pictures on the web only on the owner's say-so, and only `<img>` addresses (no backgrounds,
-  style sheets, fonts or frames, nothing 2 px or smaller), so a tracking pixel doesn't fire.
+  Pictures on the web only on the owner's say-so: `<img>` addresses and literal web backgrounds
+  on empty fixed-height table cells (from their own attributes or inline styles), never from style sheets,
+  fonts or frames. Nothing declared 2 px or smaller is fetched.
 - **"Always download pictures" is not a trust in a `From:` line.** A remembered sender or domain
   holds only for a message whose topmost `Authentication-Results` header says `dmarc=pass` (or
   `compauth=pass`) for the sender's domain, or, where it gives no DMARC verdict, `dkim=pass` for a

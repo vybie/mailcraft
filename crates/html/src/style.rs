@@ -12,7 +12,7 @@
 //! | Read | From |
 //! |---|---|
 //! | text colour | `color` |
-//! | background colour | `background-color`, the colour in `background` (a `url()` there is never used) |
+//! | background colour | `background-color`, the colour in `background` (a cell's inline `url()` can be a picture when allowed) |
 //! | bold, italic | `font-weight`, `font-style`, the same words in `font` |
 //! | underline, strike | `text-decoration`, `text-decoration-line` |
 //! | alignment | `text-align` |
@@ -690,6 +690,35 @@ pub(crate) fn declarations(style: &str) -> impl Iterator<Item = (&str, &str)> {
         }
         None
     })
+}
+
+/// An inline background picture, without changing the case of its address. Only a single,
+/// literal URL is supported; escapes and other CSS constructs are left alone.
+pub(crate) fn background_picture(style: &str) -> Option<Option<String>> {
+    let mut found: Option<(bool, Option<String>)> = None;
+    for (property, value) in declarations(truncate(style, MAX_STYLE)).take(MAX_DECLARATIONS) {
+        if !property.eq_ignore_ascii_case("background-image") && !property.eq_ignore_ascii_case("background") {
+            continue;
+        }
+        let (value, important) = strip_important(value);
+        if value.len() > MAX_VALUE || found.as_ref().is_some_and(|(prior, _)| *prior && !important) {
+            continue;
+        }
+        let lower = value.to_ascii_lowercase();
+        let image = lower.find("url(").and_then(|start| {
+            let rest = value.get(start + 4..)?;
+            let end = rest.find(')')?;
+            let raw = rest.get(..end)?.trim().trim_matches(['\'', '"']);
+            if raw.contains(['\\', '(', ')', '"', '\'']) {
+                return None;
+            }
+            crate::blocks::picture_url(Some(raw.to_string())).filter(|url| {
+                url.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("http://")) || url.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://"))
+            })
+        });
+        found = Some((important, image));
+    }
+    found.map(|(_, image)| image)
 }
 
 /// A value without its `!important` marks (a `!`, white space, `important` in any letter case, as
