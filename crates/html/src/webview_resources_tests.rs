@@ -6,7 +6,7 @@ fn preserves_markup_and_resolves_pictures_and_css() {
     let html = format!(
         "<!doctype html><!-- &copy; --><style>.a{{background:url('cid:one')}} /* url(cid:ignored) */</style><table><tr><td background=cid:two style=\"color:red;background:url({DATA})\"><img alt='&copy;' src='cid:one'></td></tr></table>"
     );
-    let result = transform(&html, "m42", |id| (id == "cid:one" || id == "cid:two").then(|| GIF.to_vec())).unwrap();
+    let result = transform(&html, "m42", |id| (id == "cid:one" || id == "cid:two").then(|| Arc::new(GIF.to_vec()))).unwrap();
     assert_eq!(result.resources.len(), 4);
     assert!(result.html.contains("<!-- &copy; -->"));
     assert!(result.html.contains("/* url(cid:ignored) */"));
@@ -17,7 +17,7 @@ fn preserves_markup_and_resolves_pictures_and_css() {
 #[test]
 fn refuses_active_or_missing_content_and_bad_scope() {
     let html = "<img src='cid:svg'><img src='data:image/svg+xml;base64,PHN2Zz4='><img src='file:///secret'><img src='cid:missing'>";
-    let out = transform(html, "one", |_| Some(b"<svg><script>x</script></svg>".to_vec())).unwrap();
+    let out = transform(html, "one", |_| Some(Arc::new(b"<svg><script>x</script></svg>".to_vec()))).unwrap();
     assert_eq!(out.html, html);
     assert!(out.resources.is_empty());
     assert!(matches!(transform(html, "../bad", |_| None), Err(TransformError::InvalidScope)));
@@ -33,7 +33,7 @@ fn bounds_and_failed_data_are_not_rewritten() {
 #[test]
 fn does_not_treat_css_strings_as_url_functions() {
     let html = "<style>.x{content:'url(cid:x)';background:url(\"cid:x\")}</style>";
-    let out = transform(html, "x", |_| Some(GIF.to_vec())).unwrap();
+    let out = transform(html, "x", |_| Some(Arc::new(GIF.to_vec()))).unwrap();
     assert_eq!(out.resources.len(), 1);
     assert!(out.html.contains("content:'url(cid:x)'"));
 }
@@ -41,7 +41,7 @@ fn does_not_treat_css_strings_as_url_functions() {
 #[test]
 fn srcset_candidates_keep_descriptors_and_commas() {
     let html = format!("<picture><source srcset='cid:one 1x, {DATA} 2x'><img srcset=\"cid:two 300w, cid:missing 600w\"></picture>");
-    let out = transform(&html, "scope7", |id| (id == "cid:one" || id == "cid:two").then(|| GIF.to_vec())).unwrap();
+    let out = transform(&html, "scope7", |id| (id == "cid:one" || id == "cid:two").then(|| Arc::new(GIF.to_vec()))).unwrap();
     assert_eq!(out.resources.len(), 3);
     assert!(out.html.contains("/reading/asset/scope7/0 1x, https://mailcraft.invalid/reading/asset/scope7/1 2x"));
     assert!(out.html.contains("/reading/asset/scope7/2 300w, cid:missing 600w"));
@@ -57,7 +57,7 @@ proptest::proptest! {
 #[test]
 fn data_and_cid_limits_are_independent() {
     let html = format!("{}{}{}", "<img src='cid:x'>".repeat(201), format!("<img src='{DATA}'>").repeat(33), "<img src='cid:x'>");
-    let result = transform(&html, "scope", |_| Some(GIF.to_vec())).unwrap();
+    let result = transform(&html, "scope", |_| Some(Arc::new(GIF.to_vec()))).unwrap();
     assert_eq!(result.resources.iter().filter(|r| r.kind == ResourceKind::Cid).count(), 200);
     assert_eq!(result.resources.iter().filter(|r| r.kind == ResourceKind::Data).count(), 32);
     assert!(result.html.contains("cid:x"));
@@ -70,7 +70,7 @@ fn cid_uses_attachment_size_limit_without_data_aggregate_cap() {
     let result = transform(&"<img src='cid:x'>".repeat(4), "scope", |_| {
         let mut bytes = vec![0; eleven_mb];
         bytes[..GIF.len()].copy_from_slice(GIF);
-        Some(bytes)
+        Some(Arc::new(bytes))
     })
     .unwrap();
     assert_eq!(result.resources.len(), 4);
@@ -78,8 +78,17 @@ fn cid_uses_attachment_size_limit_without_data_aggregate_cap() {
     let result = transform("<img src='cid:large'>", "scope", |_| {
         let mut bytes = vec![0; 24 * 1024 * 1024 + 1];
         bytes[..GIF.len()].copy_from_slice(GIF);
-        Some(bytes)
+        Some(Arc::new(bytes))
     })
     .unwrap();
     assert!(result.resources.is_empty());
+}
+
+#[test]
+fn repeated_cid_reuses_the_attachment_allocation() {
+    let shared = Arc::new(GIF.to_vec());
+    let html = "<img src='cid:one'>".repeat(200);
+    let result = transform(&html, "scope", |_| Some(Arc::clone(&shared))).unwrap();
+    assert_eq!(result.resources.len(), 200);
+    assert!(result.resources.iter().all(|resource| Arc::ptr_eq(&shared, &resource.bytes)));
 }

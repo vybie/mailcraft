@@ -36,9 +36,10 @@ pub enum TransformError {
 }
 
 /// Extract CID and data pictures in image `src`, `background`, inline style and style blocks.
-/// `scope` must be unique per document load; the caller resolves CID only within that message.
+/// `scope` must be unique per document load; the caller resolves CID only within that message,
+/// returning the attachment's existing shared bytes without copying them.
 /// Unknown or malformed syntax is left intact and must be blocked by the host's default-deny policy.
-pub fn transform(html: &str, scope: &str, mut resolve_cid: impl FnMut(&str) -> Option<Vec<u8>>) -> Result<Transformed, TransformError> {
+pub fn transform(html: &str, scope: &str, mut resolve_cid: impl FnMut(&str) -> Option<Arc<Vec<u8>>>) -> Result<Transformed, TransformError> {
     if scope.is_empty() || scope.len() > 64 || !scope.bytes().all(|b| b.is_ascii_alphanumeric()) {
         return Err(TransformError::InvalidScope);
     }
@@ -105,7 +106,7 @@ struct Extract<'a, F> {
     resources: Vec<Resource>,
     edits: Vec<(usize, usize, String)>,
 }
-impl<F: FnMut(&str) -> Option<Vec<u8>>> Extract<'_, F> {
+impl<F: FnMut(&str) -> Option<Arc<Vec<u8>>>> Extract<'_, F> {
     fn url(&mut self, raw: &str) {
         let decoded = entities::unescape(raw);
         let src = decoded.trim();
@@ -115,7 +116,7 @@ impl<F: FnMut(&str) -> Option<Vec<u8>>> Extract<'_, F> {
             if self.cid_count >= 200 {
                 return;
             }
-            (ResourceKind::Cid, (self.resolve_cid)(src).map(Arc::new))
+            (ResourceKind::Cid, (self.resolve_cid)(src))
         } else {
             return;
         };
