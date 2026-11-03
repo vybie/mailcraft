@@ -44,16 +44,14 @@ pub struct Host {
 
 impl Host {
     /// Keep the winit window alive for as long as its child exists. Call on its UI thread.
-    pub fn new(window: Arc<dyn HasWindowHandle + Send + Sync>, data_dir: &str, generation: u64, dark: bool, wake: impl Fn() + 'static) -> Result<Self, String> {
+    pub fn new(window: Arc<dyn HasWindowHandle + Send + Sync>, data_dir: &str, generation: u64, wake: impl Fn() + 'static) -> Result<Self, String> {
         let handle = window.window_handle().map_err(|e| e.to_string())?;
         let RawWindowHandle::Win32(handle) = handle.as_raw() else { return Err("not a Windows window".into()); };
         let hwnd = handle.hwnd.get();
         if data_dir.is_empty() { return Err("no WebView2 data directory".into()); }
         let options = EnvironmentOptions::new().user_data_folder(data_dir);
         let env = Environment::with_options(&options).map_err(|e| e.to_string())?;
-        let value = if dark { 0x14 } else { 0xff };
-        let background = Color { r: value, g: value, b: value, a: 255 };
-        let opts = ControllerOptions::new().in_private_mode(true).default_background_color(background);
+        let opts = ControllerOptions::new().in_private_mode(true);
         // The caller supplies winit's live HWND on its UI thread; the app owns Host and drops it
         // before the winit window. No other code constructs or retains this borrowed handle.
         let controller = unsafe { env.create_controller_with_options_for_hwnd(hwnd as *mut _, &opts) }.map_err(|e| e.to_string())?;
@@ -159,11 +157,6 @@ impl Host {
     pub fn ready(&self) -> bool { self.status.get() == 1 && self.inspected.get() }
     pub fn loaded(&self) -> bool { self.status.get() == 1 }
     pub fn theme_ready(&self) -> bool { self.theme_pending.get() == 0 && !self.theme_failed.get() }
-    #[cfg(debug_assertions)]
-    pub fn smoke_background(&self) -> Result<[u8; 4], String> {
-        let color = self.controller.default_background_color().map_err(|e| e.to_string())?;
-        Ok([color.r, color.g, color.b, color.a])
-    }
     #[cfg(debug_assertions)]
     pub fn smoke_capture(&self, callback: impl FnOnce(Result<String, String>) + 'static) -> Result<(), String> {
         self.view.call_dev_tools_protocol_method("Page.captureScreenshot", r#"{"format":"png"}"#, move |result| callback(result.map_err(|e| e.to_string()))).map_err(|e| e.to_string())
