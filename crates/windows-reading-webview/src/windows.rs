@@ -27,6 +27,8 @@ pub struct Host {
     shown: std::cell::Cell<bool>,
     navigation_started: std::cell::Cell<bool>,
     status: Rc<std::cell::Cell<i8>>,
+    refreshing: Rc<std::cell::Cell<bool>>,
+    document_epoch: Rc<std::cell::Cell<u64>>,
     theme_failed: Rc<std::cell::Cell<bool>>,
     theme_generation: Rc<std::cell::Cell<u64>>,
     theme_pending: Rc<std::cell::Cell<u8>>,
@@ -71,6 +73,8 @@ impl Host {
         let allow_document = Rc::new(RefCell::new(false));
         let links = Rc::new(RefCell::new(Vec::<String>::new()));
         let status = Rc::new(std::cell::Cell::new(0i8));
+        let refreshing = Rc::new(std::cell::Cell::new(false));
+        let document_epoch = Rc::new(std::cell::Cell::new(0u64));
         let inspected = Rc::new(std::cell::Cell::new(false));
         let inspection_pending = Rc::new(std::cell::Cell::new(false));
         let need_inspection = Rc::new(std::cell::Cell::new(true));
@@ -137,7 +141,7 @@ impl Host {
         let process_status = status.clone();
         let wake_failure = wake.clone();
         let failed = view.on_process_failed(move |_| { process_status.set(-1); wake_failure(); }).map_err(|e| e.to_string())?;
-        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), navigation_started: std::cell::Cell::new(false), status, theme_failed: Rc::new(std::cell::Cell::new(false)), theme_generation: Rc::new(std::cell::Cell::new(0)), theme_pending: Rc::new(std::cell::Cell::new(0)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
+        Ok(Self { controller, view, html, allow_document, links, images, generation, shown: std::cell::Cell::new(false), navigation_started: std::cell::Cell::new(false), status, refreshing, document_epoch, theme_failed: Rc::new(std::cell::Cell::new(false)), theme_generation: Rc::new(std::cell::Cell::new(0)), theme_pending: Rc::new(std::cell::Cell::new(0)), inspected, inspection_pending, need_inspection, probe_pending, last_scroll, last_probe: std::cell::Cell::new(None), restore_scroll, wake, _handlers: vec![resource, navigation, new_window, download, permission, completed, failed], _window: window })
     }
 
     pub fn show(&self, html: &str, bounds: [i32; 4]) -> Result<(), String> {
@@ -155,16 +159,25 @@ impl Host {
     }
     pub fn set_visible(&self, visible: bool) -> Result<(), String> { self.controller.set_visible(visible).map_err(|e| e.to_string()) }
     pub fn ready(&self) -> bool { self.status.get() == 1 && self.inspected.get() }
+    /// A reload of this same message may remain visible while it is re-inspected.
+    pub fn refreshing(&self) -> bool { self.refreshing.get() }
     pub fn loaded(&self) -> bool { self.status.get() == 1 }
     pub fn theme_ready(&self) -> bool { self.theme_pending.get() == 0 && !self.theme_failed.get() }
     #[cfg(debug_assertions)]
     pub fn smoke_capture(&self, callback: impl FnOnce(Result<String, String>) + 'static) -> Result<(), String> {
         self.view.call_dev_tools_protocol_method("Page.captureScreenshot", r#"{"format":"png"}"#, move |result| callback(result.map_err(|e| e.to_string()))).map_err(|e| e.to_string())
     }
+    #[cfg(debug_assertions)]
+    pub fn smoke_eval(&self, script: &str, callback: impl FnOnce(Result<String, String>) + 'static) -> Result<(), String> {
+        self.view.execute_script(script, move |result| callback(result.map_err(|e| e.to_string()))).map_err(|e| e.to_string())
+    }
     pub fn failed(&self) -> bool { self.status.get() < 0 || self.theme_failed.get() }
     /// Re-request after validated images become available; no browser-side network is allowed.
     pub fn refresh(&self) -> Result<(), String> {
-        self.hide()?;
+        self.refreshing.set(true);
+        self.document_epoch.set(self.document_epoch.get().wrapping_add(1));
+        self.inspection_pending.set(false);
+        self.probe_pending.set(false);
         self.status.set(0);
         self.inspected.set(false);
         let view = self.view.clone();
@@ -173,7 +186,10 @@ impl Host {
         let status = self.status.clone();
         let inspected = self.inspected.clone();
         let wake = self.wake.clone();
+        let epoch = self.document_epoch.get();
+        let current = self.document_epoch.clone();
         self.view.execute_script(SCROLL_POSITION, move |result| {
+            if current.get() != epoch { return; }
             let position = result.ok().and_then(|s| serde_json::from_str::<[f64; 4]>(&s).ok());
             let Some([x, y, _, _]) = position.filter(|a| a.iter().all(|v| v.is_finite())) else { status.set(-1); wake(); return; };
             restore.set(Some((x.clamp(-1_000_000.0, 1_000_000.0), y.clamp(-1_000_000.0, 1_000_000.0))));
@@ -228,12 +244,16 @@ impl Host {
             let status = self.status.clone();
             let inspected = self.inspected.clone();
             let pending = self.inspection_pending.clone();
+            let refreshing = self.refreshing.clone();
             let wake = self.wake.clone();
             let generation = self.generation;
+            let epoch = self.document_epoch.get();
+            let current = self.document_epoch.clone();
             if let Err(e) = self.view.execute_script(VISIBLE_IMAGES, move |result| {
+                if current.get() != epoch { return; }
                 pending.set(false);
                 match result.ok().and_then(|s| crate::inspection::urls(&s)) {
-                    Some(urls) => { images.borrow_mut().classify(generation, urls); inspected.set(true); }
+                    Some(urls) => { images.borrow_mut().classify(generation, urls); inspected.set(true); refreshing.set(false); }
                     None => status.set(-1),
                 }
                 wake();
@@ -247,7 +267,10 @@ impl Host {
             let needs = self.need_inspection.clone();
             let status = self.status.clone();
             let wake = self.wake.clone();
+            let epoch = self.document_epoch.get();
+            let current = self.document_epoch.clone();
             if let Err(e) = self.view.execute_script(SCROLL_POSITION, move |result| {
+                if current.get() != epoch { return; }
                 pending.set(false);
                 let position = result.ok().and_then(|s| serde_json::from_str::<[f64; 4]>(&s).ok()).filter(|v| v.iter().all(|n| n.is_finite()));
                 if let Some(position) = position {

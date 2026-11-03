@@ -106,7 +106,7 @@ impl Pane {
                 current.dirty = true;
             }
         }
-        if current.dirty && pane.pictures_waiting == 0 {
+        if current.dirty && pane.pictures_waiting == 0 && !current.host.refreshing() {
             current.dirty = false;
             if current.host.refresh().is_err() { self.failed = Some(pane.message); self.current = None; return; }
         }
@@ -121,7 +121,7 @@ impl Pane {
             return;
         }
         let ready = current.host.ready();
-        if current.host.set_visible(current.host.ready() && current.host.theme_ready()).is_err() { self.failed = Some(pane.message); self.current = None; return; }
+        if current.host.set_visible((current.host.ready() || current.host.refreshing()) && current.host.theme_ready()).is_err() { self.failed = Some(pane.message); self.current = None; return; }
         ctx.request_repaint_after(std::time::Duration::from_millis(if !ready || pane.pictures_waiting > 0 { 100 } else { 500 }));
     }
 

@@ -27,10 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::temp_dir().join(format!("mailcraft-webview-smoke-{}", std::process::id()));
     let host = Host::new(window, dir.to_str().ok_or("bad temporary path")?, 1, || {})?;
     host.set_dark(true)?;
-    let html = format!("<style>body{{background:#fff;color:#111}}.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png)}}</style>\
+    let html = format!("<style>body{{background:#fff;color:#111}}.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png)}}.long{{height:3000px}}</style>\
         <div class='hero'></div><img width=40 height=40 src='http://{address}/image.png'>\
-        <img width=1 height=1 src='http://{address}/tracker.png'>");
+        <img width=1 height=1 src='http://{address}/tracker.png'><div class='long'>Scrollable synthetic message</div>");
     host.show(&html, [0, 0, 800, 600])?;
+    host.set_image_access(1, true);
     let until = Instant::now() + Duration::from_secs(15);
     let mut success = false;
     while Instant::now() < until {
@@ -45,6 +46,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if host.failed() { break; }
         std::thread::sleep(Duration::from_millis(25));
     }
+    assert!(success, "initial message did not become ready");
+    host.set_visible(true)?;
+    #[cfg(debug_assertions)]
+    fn eval(host: &Host, script: &str) -> Result<String, Box<dyn std::error::Error>> {
+        let result=std::rc::Rc::new(std::cell::RefCell::new(None));
+        let output=result.clone();
+        host.smoke_eval(script,move |value| *output.borrow_mut()=Some(value))?;
+        let deadline=Instant::now()+Duration::from_secs(5);
+        while result.borrow().is_none() && Instant::now()<deadline { windows_window::pump(); std::thread::sleep(Duration::from_millis(5)); }
+        let value=result.borrow_mut().take().ok_or("script timed out")??;
+        Ok(value)
+    }
+    #[cfg(debug_assertions)]
+    assert_eq!(eval(&host,"window.scrollTo(0,900); window.scrollY")?,"900");
     #[cfg(debug_assertions)]
     fn capture(host: &Host, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
         host.set_visible(true)?;
@@ -64,8 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let capture_path = std::env::var_os("MAILCRAFT_SMOKE_CAPTURE").map(std::path::PathBuf::from);
     #[cfg(debug_assertions)]
     if let Some(path) = &capture_path { capture(&host, path)?; }
+    // Supply a delayed, validated raster after the blocked first request.
+    let gif=Arc::new(b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\x00\x00\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b".to_vec());
+    assert!(host.add_image(1, &format!("http://{address}/image.png"), gif));
     host.refresh()?;
-    assert!(!host.ready(), "refresh must hide the old document while it reloads");
+    assert!(!host.ready() && host.refreshing(), "same-message reload should remain visible");
     let until = Instant::now() + Duration::from_secs(15);
     while !host.ready() && !host.failed() && Instant::now() < until {
         windows_window::pump();
@@ -73,6 +91,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(host.ready(), "WebView2 did not complete the image refresh");
+    assert!(!host.refreshing());
+    #[cfg(debug_assertions)]
+    { assert_eq!(eval(&host,"window.scrollY")?,"900"); assert_eq!(eval(&host,"document.querySelector('img').naturalWidth")?,"1"); }
     #[cfg(debug_assertions)]
     if let Some(path) = &capture_path { capture(&host, &path.with_extension("reload.json"))?; }
     host.set_dark(false)?;
