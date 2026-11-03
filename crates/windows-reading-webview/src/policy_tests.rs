@@ -52,3 +52,24 @@ fn embedded_images_are_bounded_and_scoped_to_one_generation() {
     images.reset(8);
     assert!(images.request(url, true).is_none());
 }
+
+#[test]
+fn stale_results_cannot_enable_or_supply_the_same_url_after_reset() {
+    let mut images = Images::default();
+    let url = "https://image.example/shared.png";
+    let png = Arc::new(b"\x89PNG\r\n\x1a\ncontent".to_vec());
+    images.reset(1);
+    images.set_allowed(1, true);
+    images.request(url, true);
+    images.classify(1, vec![url.into()]);
+    assert!(images.put(1, url, png.clone()));
+    images.reset(2);
+    images.set_allowed(1, true);
+    images.classify(1, vec![url.into()]);
+    assert!(images.request(url, true).is_none());
+    assert!(!images.put(1, url, png.clone()));
+    images.set_allowed(2, true);
+    assert!(!images.put(2, url, png.clone()));
+    images.classify(2, vec![url.into()]);
+    assert!(images.put(2, url, png));
+}

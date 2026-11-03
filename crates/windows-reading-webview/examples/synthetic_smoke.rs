@@ -25,7 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[allow(deprecated)]
     let window = Arc::new(events.create_window(Window::default_attributes().with_visible(false).with_inner_size(LogicalSize::new(800, 600)))?);
     let dir = std::env::temp_dir().join(format!("mailcraft-webview-smoke-{}", std::process::id()));
+    let started = Instant::now();
     let host = Host::new(window.clone(), dir.to_str().ok_or("bad temporary path")?, 1, true, || {})?;
+    let created_ms = started.elapsed().as_millis();
     #[cfg(debug_assertions)]
     assert_eq!(host.smoke_background()?, [0x14, 0x14, 0x14, 255], "dark controller must start dark");
     host.set_dark(true)?;
@@ -47,6 +49,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if host.failed() { break; }
         std::thread::sleep(Duration::from_millis(25));
     }
+    let first_ready_ms = started.elapsed().as_millis();
+    assert!(success, "initial message did not become ready");
+    let image_url = format!("http://{address}/image.png");
+    let bytes = Arc::new(b"\x89PNG\r\n\x1a\nsynthetic".to_vec());
+    host.set_image_access(1, true);
+    assert!(host.add_image(1, &image_url, bytes.clone()));
+    host.refresh()?;
+    // Switch twice before pending refresh/navigation callbacks have been pumped.
+    let warm = Instant::now();
+    host.reset(2)?;
+    assert!(!host.add_image(1, &image_url, bytes.clone()), "late old image must be refused");
+    host.show(&format!("<img width=40 height=40 src='http://{address}/other.png'>"), [0, 0, 800, 600])?;
+    host.poll()?;
+    host.reset(3)?;
+    assert!(!host.add_image(2, &image_url, bytes.clone()), "intermediate generation must be refused");
+    host.show(&html, [0, 0, 800, 600])?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        windows_window::pump();
+        host.poll()?;
+        if host.ready() && host.image_requests().iter().any(|u| u == &image_url) { break; }
+        if host.failed() { break; }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(host.ready(), "reused host did not become ready");
+    assert!(host.image_requests().iter().any(|u| u == &image_url));
+    assert!(!host.image_requests().iter().any(|u| u.ends_with("/other.png")), "old document discovery leaked");
+    assert!(!host.add_image(3, &image_url, bytes.clone()), "new generation must begin with images blocked");
+    host.set_image_access(3, true);
+    assert!(host.add_image(3, &image_url, bytes.clone()));
+    let warm_ready_ms = warm.elapsed().as_millis();
+    // A setting/cache reset for the same message must discard prior bytes and permission.
+    host.reset(4)?;
+    assert!(!host.add_image(3, &image_url, bytes.clone()));
+    assert!(!host.add_image(4, &image_url, bytes));
+    host.show(&html, [0, 0, 800, 600])?;
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !host.ready() && !host.failed() && Instant::now() < deadline {
+        windows_window::pump(); host.poll()?; std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(host.ready(), "same-message reset did not become ready");
+    println!("synthetic timing: controller creation {created_ms} ms; first ready {first_ready_ms} ms; two warm switches ready {warm_ready_ms} ms");
     #[cfg(debug_assertions)]
     fn capture(host: &Host, path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
         host.set_visible(true)?;
@@ -66,6 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let capture_path = std::env::var_os("MAILCRAFT_SMOKE_CAPTURE").map(std::path::PathBuf::from);
     #[cfg(debug_assertions)]
     if let Some(path) = &capture_path { capture(&host, path)?; }
+    host.refresh()?;
     host.refresh()?;
     assert!(!host.ready(), "refresh must hide the old document while it reloads");
     let until = Instant::now() + Duration::from_secs(15);
