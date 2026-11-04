@@ -12,7 +12,7 @@
     if (typeof value !== "string" || value.length === 0 || value.length > MAX_URL) return null;
     try {
       const url = new URL(value, document.baseURI);
-      return (url.protocol === "https:" || url.protocol === "http:") && url.href.length <= MAX_URL ? url.href : null;
+      return (url.protocol === "https:" || url.protocol === "http:") && url.hostname !== "mailcraft.invalid" && url.href.length <= MAX_URL ? url.href : null;
     } catch (_) { return null; }
   }
   function tinyAttribute(element, name) {
@@ -24,13 +24,14 @@
   function visible(element) {
     const rect = element.getBoundingClientRect();
     if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width <= 2 || rect.height <= 2) return null;
+    if (rect.right + window.scrollX <= 0 || rect.bottom + window.scrollY <= 0) return null;
     // A visible message may have eligible images below the viewport; only actual ancestor
     // clipping, not the viewport edge, removes a candidate.
     let left = rect.left, top = rect.top, right = rect.right, bottom = rect.bottom;
     let node = element, depth = 0;
     while (node && depth++ < MAX_ANCESTORS) {
       const style = getComputedStyle(node);
-      if (node.hidden || style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0 || style.contentVisibility === "hidden") return null;
+      if (node.hidden || style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0 || style.contentVisibility === "hidden" || style.clipPath !== "none" || style.clip !== "auto") return null;
       if (node === element) {
         const w = parseFloat(style.width), h = parseFloat(style.height);
         if ((Number.isFinite(w) && w <= 2) || (Number.isFinite(h) && h <= 2)) return null;
@@ -47,6 +48,66 @@
     }
     if (node || right - left <= 0 || bottom - top <= 0) return null;
     return { width: rect.width, height: rect.height };
+  }
+  // A blocked image with no intrinsic dimensions can collapse to 0×0. Treat it as uncertain,
+  // never as an automatically eligible image. Deliberate consent is required by the host.
+  let checkedRules = 0;
+  function unknownImage(element) {
+    const rect = element.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || (rect.width > 0 && rect.width <= 2) || (rect.height > 0 && rect.height <= 2)) return false;
+    if (rect.right + window.scrollX < 0 || rect.bottom + window.scrollY < 0) return false;
+    if (tinyAttribute(element, "width") || tinyAttribute(element, "height")) return false;
+    const tiny = value => {
+      value = (value || "").trim().toLowerCase();
+      if (!value || /^(auto|none|initial|unset)$/.test(value)) return false;
+      const number = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(px|%)?$/i.exec(value);
+      return !number || Number(number[1]) <= 2;
+    };
+    const properties = ["width", "height", "min-width", "min-height", "max-width", "max-height"];
+    if (properties.some(name => tiny(element.style.getPropertyValue(name)))) return false;
+    function safeRules(rules) {
+      for (const rule of rules) {
+        if (++checkedRules > 2000) return false;
+        if (rule.cssRules && !safeRules(rule.cssRules)) return false;
+        if (rule.selectorText && rule.style) {
+          try { if (element.matches(rule.selectorText) && properties.some(name => tiny(rule.style.getPropertyValue(name)))) return false; }
+          catch (_) { return false; }
+        }
+      }
+      return true;
+    }
+    for (const sheet of document.styleSheets) { try { if (!safeRules(sheet.cssRules)) return false; } catch (_) { return false; } }
+    let node = element, depth = 0;
+    while (node && depth++ < MAX_ANCESTORS) {
+      const style = getComputedStyle(node);
+      if (node.hidden || style.display === "none" || (node === element && style.display === "contents") || style.visibility !== "visible" || Number(style.opacity) === 0 || style.contentVisibility === "hidden" || style.clipPath !== "none" || style.clip !== "auto" || style.transform !== "none" || style.filter !== "none" || style.maskImage !== "none") return false;
+      if (node !== element && (/^(hidden|clip|scroll|auto)$/.test(style.overflowX) || /^(hidden|clip|scroll|auto)$/.test(style.overflowY))) {
+        const clip = node.getBoundingClientRect();
+        const outsideX = rect.width === 0 ? rect.left < clip.left || rect.left >= clip.right : rect.right <= clip.left || rect.left >= clip.right;
+        const outsideY = rect.height === 0 ? rect.top < clip.top || rect.top >= clip.bottom : rect.bottom <= clip.top || rect.top >= clip.bottom;
+        if ((/^(hidden|clip|scroll|auto)$/.test(style.overflowX) && (clip.width <= 2 || outsideX)) || (/^(hidden|clip|scroll|auto)$/.test(style.overflowY) && (clip.height <= 2 || outsideY))) return false;
+      }
+      node = node.parentElement;
+    }
+    return !node;
+  }
+  function needsUnknownSize(element) {
+    if (element.naturalWidth > 0 && element.naturalHeight > 0) return false;
+    // Unlike getComputedStyle's resolved pixels, Typed OM preserves `auto` for broken-image
+    // placeholders, which can otherwise look like a harmless 16×16 image before it loads.
+    try {
+      const style = element.computedStyleMap();
+      return String(style.get("width")) === "auto" || String(style.get("height")) === "auto";
+    } catch (_) { return true; }
+  }
+  function safeUnknownBackground(element) {
+    let node = element, depth = 0;
+    while (node && depth++ < MAX_ANCESTORS) {
+      const style = getComputedStyle(node);
+      if (style.filter !== "none" || style.maskImage !== "none" || style.transform !== "none") return false;
+      node = node.parentElement;
+    }
+    return !node;
   }
   function add(value, dimensions, kind) {
     const url = absoluteHttp(value);
@@ -88,16 +149,19 @@
     });
   }
   // Computed CSS is serialized by the browser. Strings outside url() are not image requests.
-  function backgrounds(css, sizes, dimensions, width, height) {
+  function backgrounds(css, sizes, dimensions, width, height, allowUnknown) {
     if (css.length > MAX_CSS || sizes.length > MAX_CSS) { truncated = true; return; }
     const imagesByLayer = layers(css), sizesByLayer = layers(sizes);
     if (!sizesByLayer.length) return;
     for (let layer = 0; layer < imagesByLayer.length; layer++) {
-      if (tinyOrUnknown(sizesByLayer[layer % sizesByLayer.length], width, height)) continue;
-      backgroundLayer(imagesByLayer[layer], dimensions);
+      const size = sizesByLayer[layer % sizesByLayer.length];
+      if (tinyOrUnknown(size, width, height)) continue;
+      const unknown = /\b(auto|contain)\b/i.test(size);
+      if (unknown && !allowUnknown) continue;
+      backgroundLayer(imagesByLayer[layer], unknown ? {width: 0, height: 0} : dimensions, unknown ? "unknown" : "background");
     }
   }
-  function backgroundLayer(css, dimensions) {
+  function backgroundLayer(css, dimensions, kind) {
     let i = 0;
     while (i < css.length && images.length < MAX_IMAGES) {
       const c = css[i];
@@ -120,7 +184,7 @@
       if (quote && css[j++] !== quote) { i = j; continue; }
       while (j < css.length && /\s/.test(css[j])) j++;
       if (css[j] !== ")") { i = j; continue; }
-      add(value, dimensions, "background");
+      add(value, dimensions, kind);
       i = j + 1;
     }
   }
@@ -133,15 +197,17 @@
       const isImage = element.localName === "img";
       if (!tinyAttribute(element, "width") && !tinyAttribute(element, "height")) {
         const dimensions = visible(element);
+        if (isImage && needsUnknownSize(element)) {
+          if (unknownImage(element)) add(element.currentSrc || element.src, {width: 0, height: 0}, "unknown");
+        } else if (isImage && dimensions) add(element.currentSrc || element.src, dimensions, "image");
         if (dimensions) {
-          if (isImage) add(element.currentSrc || element.src, dimensions, "image");
           const style = getComputedStyle(element);
           // The background positioning area may be the content box, which is smaller than
           // clientWidth/clientHeight. Use that lower bound for percentage sizes.
           const padding = name => parseFloat(style[name]) || 0;
           const width = Math.max(0, element.clientWidth - padding("paddingLeft") - padding("paddingRight") - 1);
           const height = Math.max(0, element.clientHeight - padding("paddingTop") - padding("paddingBottom") - 1);
-          backgrounds(style.backgroundImage, style.backgroundSize, dimensions, width, height);
+          backgrounds(style.backgroundImage, style.backgroundSize, dimensions, width, height, safeUnknownBackground(element));
         }
       }
       element = walker.nextNode();

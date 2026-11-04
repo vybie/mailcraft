@@ -88,11 +88,13 @@ impl Pane {
             app.native_html_images = None;
             return;
         }
+        current.host.set_unknown_image_access(current.host.generation(), pane.unknown_allowed);
         let requests = current.host.image_requests();
+        let unknown_count = current.host.unknown_image_count();
         // Only image requests matched by the bounded host-authored dimension inspection enter
         // the existing image-permission path; unclassified requests stay blocked.
-        let changed = app.native_html_images.as_ref().is_none_or(|prior| !Arc::ptr_eq(&prior.message, &pane.message) || prior.urls != requests);
-        app.native_html_images = Some(NativeHtmlImages { message: pane.message.clone(), app_instance: pane.app_instance.clone(), mailbox_opening: pane.mailbox_opening, urls: requests.clone() });
+        let changed = app.native_html_images.as_ref().is_none_or(|prior| !Arc::ptr_eq(&prior.message, &pane.message) || prior.urls != requests || prior.unknown_count != unknown_count);
+        app.native_html_images = Some(NativeHtmlImages { message: pane.message.clone(), app_instance: pane.app_instance.clone(), mailbox_opening: pane.mailbox_opening, urls: requests.clone(), unknown_count });
         if changed { ctx.request_repaint(); }
         let normal = |url: &str| mailcraft_link::WebLink::parse(url).map(mailcraft_link::WebLink::into_string);
         let known: Vec<(String, String)> = pane.remote_urls.iter().filter_map(|url| normal(url).map(|n| (n, url.to_string()))).collect();
@@ -146,6 +148,7 @@ impl Pane {
             }
         }
         host.set_image_access(generation, pane.access == NativePictureAccess::Allowed);
+        host.set_unknown_image_access(generation, pane.unknown_allowed);
         host.show(&transformed.html, bounds(pane.rect, ctx.pixels_per_point())).map_err(|_| ())?;
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
         Ok(Current { message: pane.message.clone(), app_instance: pane.app_instance.clone(), mailbox_opening: pane.mailbox_opening, host, access: pane.access, supplied: HashSet::new(), dirty: false, picture_cache_generation: pane.picture_cache_generation, dark: pane.dark })

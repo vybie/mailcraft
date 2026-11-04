@@ -231,12 +231,17 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     let doc = (!native).then(|| view::doc_shown(&ctx, m, place, remote::available(app), view::env_of(app, ui, place)));
     #[allow(unused_mut)]
     let mut urls = doc.as_ref().map_or_else(Vec::new, |doc| doc.remote.clone());
+    #[allow(unused_mut)]
+    let mut unknown_pending = false;
+    #[cfg(windows)]
+    let unknown_allowed = remote::unknown_approved(app, m);
     #[cfg(windows)]
     if place == Place::Pane
         && let Some(discovered) = app.native_html_images.as_mut().filter(|found| Arc::ptr_eq(&found.app_instance, &app.native_html_instance)
             && found.mailbox_opening == app.session.openings() && (Arc::ptr_eq(&found.message, m) || crate::native_html_same_message(&found.message, m)))
     {
         discovered.message = m.clone();
+        unknown_pending = discovered.unknown_count > 0 && !unknown_allowed;
         for url in &discovered.urls {
             if urls.len() >= remote::MAX_PER_MESSAGE { break; }
             if images::is_remote(url) && mailcraft_html::is_safe_url(url) && !urls.iter().any(|u| &**u == url) {
@@ -253,7 +258,7 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
         draft_bar(app, ui, m);
     }
     header(app, ui, m, place, |app, ui, t| {
-        remote::line(app, ui, m, !urls.is_empty(), access, progress, place, t);
+        remote::line(app, ui, m, !urls.is_empty(), unknown_pending, access, progress, place, t);
         unreadable_line(ui, m, t);
     });
     // A meeting that came with the message: what it is, and the ways to answer it.
@@ -291,7 +296,7 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     let room = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     #[cfg(windows)]
     if place == Place::Pane && m.body.html.is_some() && room.is_positive() {
-        app.native_html_pane = Some(crate::NativeHtmlPane { message: m.clone(), app_instance: app.native_html_instance.clone(), mailbox_opening: app.session.openings(), rect: room, access: remote::access(app, m), remote_urls: urls.clone(), pictures_waiting: progress.waiting, picture_cache_generation: app.remote_pictures.cache_generation, dark: Tokens::get(ui.ctx()).dark && !app.ui.light_messages });
+        app.native_html_pane = Some(crate::NativeHtmlPane { message: m.clone(), app_instance: app.native_html_instance.clone(), mailbox_opening: app.session.openings(), rect: room, access: remote::access(app, m), remote_urls: urls.clone(), pictures_waiting: progress.waiting, picture_cache_generation: app.remote_pictures.cache_generation, unknown_allowed, dark: Tokens::get(ui.ctx()).dark && !app.ui.light_messages });
     }
     if native {
         let t = Tokens::get(&ctx);
