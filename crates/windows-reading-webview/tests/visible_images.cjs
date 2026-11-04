@@ -50,18 +50,27 @@ const { chromium } = require(process.env.MAILCRAFT_PLAYWRIGHT || 'playwright');
       <img src="https://image.example/clip-path-hidden" style="width:40px;height:40px;clip-path:inset(50%)">
       <div style="clip-path:inset(50%)"><img src="https://image.example/ancestor-hidden" style="width:40px;height:40px"></div>
       <img src="https://image.example/cropped" style="width:40px;height:40px;clip-path:inset(5%)">
+      <img src="https://image.example/legacy-hidden" style="position:absolute;width:40px;height:40px;clip:rect(0px,0px,0px,0px)">
+      <div style="position:absolute;clip:rect(0px,0px,0px,0px)"><img src="https://image.example/legacy-parent" style="width:40px;height:40px"></div>
+      <img src="https://image.example/legacy-cropped" style="position:absolute;width:40px;height:40px;clip:rect(0px,30px,30px,0px)">
     `, { waitUntil: 'load' });
     const uncertain = await page.evaluate(script);
     const found = uncertain.images.map(image => image.url);
     assert(found.includes('https://image.example/collapsed'));
     assert(found.includes('https://image.example/with-alt'));
     assert(found.includes('https://image.example/cropped'));
-    for (const suffix of ['zero', 'tiny-attr', 'hidden', 'clipped', 'clip-path-hidden', 'ancestor-hidden']) assert(!found.includes(`https://image.example/${suffix}`));
+    assert(found.includes('https://image.example/legacy-cropped'));
+    for (const suffix of ['zero', 'tiny-attr', 'hidden', 'clipped', 'clip-path-hidden', 'ancestor-hidden', 'legacy-hidden', 'legacy-parent']) assert(!found.includes(`https://image.example/${suffix}`));
     await page.setContent(`${Array.from({length: 60}, (_, i) => `<img alt="" src="https://image.example/collapsed-${i}">`).join('')}
       <img width="40" height="40" src="https://image.example/already-supported">`, { waitUntil: 'load' });
     const crowded = await page.evaluate(script);
     assert.equal(crowded.images.length, 60);
     assert(crowded.images.some(image => image.url === 'https://image.example/already-supported'));
+    await page.setContent(`${Array.from({length: 65}, (_, i) => `<img alt="" src="https://mailcraft.invalid/reading/asset/1/${i}">`).join('')}
+      ${Array.from({length: 65}, (_, i) => `<img alt="" src="https://image.example/repeated#${i}">`).join('')}
+      <img alt="" src="https://image.example/last">`, { waitUntil: 'load' });
+    const deduplicated = await page.evaluate(script);
+    assert.deepEqual(deduplicated.images.map(image => image.url), ['https://image.example/repeated', 'https://image.example/last']);
     console.log('PASS: tiny background layers rejected; ordinary layers, commas and images retained; requests blocked');
     await context.close();
   } finally {

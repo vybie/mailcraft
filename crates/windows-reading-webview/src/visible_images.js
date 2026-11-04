@@ -5,7 +5,7 @@
 (() => {
   "use strict";
   const MAX_ELEMENTS = 10000, MAX_IMAGES = 60, MAX_URL = 8192, MAX_CSS = 65536, MAX_ANCESTORS = 128;
-  const images = [], seen = new Set(), collapsed = [];
+  const images = [], seen = new Set(), collapsed = [], collapsedSeen = new Set();
   let scanned = 0, truncated = false;
 
   function absoluteHttp(value) {
@@ -25,6 +25,10 @@
     return Number.isFinite(number) && number <= 2;
   }
   function emptyClip(node, style) {
+    if (style.position === "absolute" || style.position === "fixed") {
+      const legacy = /^rect\(\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))px\s*\)$/i.exec(style.clip);
+      if (legacy && (Number(legacy[2]) <= Number(legacy[4]) || Number(legacy[3]) <= Number(legacy[1]))) return true;
+    }
     // Reject only an inset that provably clips the entire box, not ordinary rounded/cropped images.
     const match = /^inset\(([^)]*)\)$/i.exec(style.clipPath);
     if (!match) return false;
@@ -199,7 +203,10 @@
           const width = Math.max(0, element.clientWidth - padding("paddingLeft") - padding("paddingRight") - 1);
           const height = Math.max(0, element.clientHeight - padding("paddingTop") - padding("paddingBottom") - 1);
           backgrounds(style.backgroundImage, style.backgroundSize, dimensions, width, height);
-        } else if (isImage && collapsed.length < MAX_IMAGES && collapsedImage(element)) collapsed.push(element.currentSrc || element.src);
+        } else if (isImage && collapsed.length < MAX_IMAGES && collapsedImage(element)) {
+          const url = absoluteHttp(element.currentSrc || element.src);
+          if (url && !seen.has(url) && !collapsedSeen.has(url)) { collapsedSeen.add(url); collapsed.push(url); }
+        }
       }
       element = walker.nextNode();
     }
