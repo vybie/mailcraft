@@ -201,9 +201,7 @@ impl Host {
     }
     pub fn take_links(&self) -> Vec<String> { std::mem::take(&mut *self.links.borrow_mut()) }
     pub fn image_requests(&self) -> Vec<String> { self.images.borrow().discovered() }
-    pub fn unknown_image_count(&self) -> usize { self.images.borrow().unknown_count() }
     pub fn set_image_access(&self, generation: u64, allowed: bool) { self.images.borrow_mut().set_allowed(generation, allowed); }
-    pub fn set_unknown_image_access(&self, generation: u64, allowed: bool) { self.images.borrow_mut().set_unknown_allowed(generation, allowed); }
     pub fn add_image(&self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool { self.images.borrow_mut().put(generation, url, bytes) }
     pub fn add_embedded_image(&self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool { self.images.borrow_mut().put_local(generation, url, bytes) }
     pub fn generation(&self) -> u64 { self.generation }
@@ -255,7 +253,7 @@ impl Host {
                 if current.get() != epoch { return; }
                 pending.set(false);
                 match result.ok().and_then(|s| crate::inspection::urls(&s)) {
-                    Some(urls) => { images.borrow_mut().classify(generation, urls.known, urls.unknown); inspected.set(true); refreshing.set(false); }
+                    Some(urls) => { images.borrow_mut().classify(generation, urls); inspected.set(true); refreshing.set(false); }
                     None => status.set(-1),
                 }
                 wake();

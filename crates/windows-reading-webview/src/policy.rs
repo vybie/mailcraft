@@ -22,8 +22,6 @@ pub(crate) struct Images {
     allowed: bool,
     discovered: Vec<String>,
     eligible: Vec<String>,
-    unknown: Vec<String>,
-    unknown_allowed: bool,
     ready: HashMap<String, Arc<Vec<u8>>>,
     bytes: usize,
     local: HashMap<String, Arc<Vec<u8>>>,
@@ -41,10 +39,6 @@ impl Images {
         if !allowed { self.ready.clear(); self.bytes = 0; }
     }
 
-    pub(crate) fn set_unknown_allowed(&mut self, generation: u64, allowed: bool) {
-        if generation == self.generation { self.unknown_allowed = allowed; }
-    }
-
     /// Record only browser image requests; return bytes solely after explicit permission.
     pub(crate) fn request(&mut self, url: &str, is_image: bool) -> Option<(&'static str, Arc<Vec<u8>>)> {
         if !is_image || url.len() > MAX_URL || !(url.starts_with("https://") || url.starts_with("http://")) { return None; }
@@ -57,22 +51,19 @@ impl Images {
             if self.discovered.len() >= MAX_DISCOVERED { return None; }
             self.discovered.push(url.to_string());
         }
-        if !self.allowed || !(self.eligible.iter().any(|known| known == url) || (self.unknown_allowed && self.unknown.iter().any(|known| known == url))) { return None; }
+        if !self.allowed || !self.eligible.iter().any(|known| known == url) { return None; }
         let bytes = self.ready.get(url)?;
         Some((mime(bytes)?, bytes.clone()))
     }
 
     pub(crate) fn discovered(&self) -> Vec<String> {
-        self.eligible.iter().chain(self.unknown.iter().filter(|_| self.unknown_allowed)).filter(|url| self.discovered.contains(url)).take(MAX_IMAGES).cloned().collect()
+        self.eligible.iter().filter(|url| self.discovered.contains(url)).take(MAX_IMAGES).cloned().collect()
     }
 
-    pub(crate) fn unknown_count(&self) -> usize { self.unknown.iter().filter(|url| self.discovered.contains(url)).count() }
-
     /// Only the current document's validated host inspection may classify resources.
-    pub(crate) fn classify(&mut self, generation: u64, urls: Vec<String>, unknown: Vec<String>) {
+    pub(crate) fn classify(&mut self, generation: u64, urls: Vec<String>) {
         if generation != self.generation { return; }
         self.eligible = urls.into_iter().filter(|url| url.len() <= MAX_URL && (url.starts_with("https://") || url.starts_with("http://"))).take(MAX_IMAGES).collect();
-        self.unknown = unknown.into_iter().filter(|url| url.len() <= MAX_URL && (url.starts_with("https://") || url.starts_with("http://"))).take(MAX_IMAGES).collect();
     }
 
     /// Add a validated embedded raster from this message under its opaque generation URL.
@@ -90,7 +81,7 @@ impl Images {
 
     /// Bytes must already have passed the mail image validator and download budgets.
     pub(crate) fn put(&mut self, generation: u64, url: &str, bytes: Arc<Vec<u8>>) -> bool {
-        if generation != self.generation || !self.allowed || !self.discovered.iter().any(|known| known == url) || !(self.eligible.iter().any(|known| known == url) || (self.unknown_allowed && self.unknown.iter().any(|known| known == url)))
+        if generation != self.generation || !self.allowed || !self.discovered.iter().any(|known| known == url) || !self.eligible.iter().any(|known| known == url)
             || bytes.len() > MAX_IMAGE_BYTES || mime(&bytes).is_none() { return false; }
         let prior = self.ready.get(url).map_or(0, |item| item.len());
         let total = self.bytes.saturating_sub(prior).saturating_add(bytes.len());

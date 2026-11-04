@@ -1214,7 +1214,6 @@ pub struct NativeHtmlPane {
     pub remote_urls: Vec<std::sync::Arc<str>>,
     pub pictures_waiting: usize,
     pub picture_cache_generation: u64,
-    pub unknown_allowed: bool,
     pub dark: bool,
 }
 
@@ -1225,7 +1224,6 @@ pub struct NativeHtmlImages {
     pub app_instance: std::sync::Arc<()>,
     pub mailbox_opening: u64,
     pub urls: Vec<String>,
-    pub unknown_count: usize,
 }
 
 /// Equality of the message identity and the complete content the native HTML host can serve.

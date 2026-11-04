@@ -27,9 +27,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::temp_dir().join(format!("mailcraft-webview-smoke-{}", std::process::id()));
     let host = Host::new(window, dir.to_str().ok_or("bad temporary path")?, 1, || {})?;
     host.set_dark(true)?;
-    let html = format!("<style>body{{background:#fff;color:#111}}.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png);background-size:100px 100px}}.long{{height:3000px}}</style>\
+    let html = format!("<style>body{{background:#fff;color:#111}}.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png)}}.long{{height:3000px}}</style>\
         <div class='hero'></div><img width=40 height=40 src='http://{address}/image.png'>\
-        <img width=1 height=1 src='http://{address}/tracker.png'><img src='http://{address}/unknown.png'><div class='long'>Scrollable synthetic message</div>");
+        <img width=1 height=1 src='http://{address}/tracker.png'><div class='long'>Scrollable synthetic message</div>");
     host.show(&html, [0, 0, 800, 600])?;
     host.set_image_access(1, true);
     let until = Instant::now() + Duration::from_secs(15);
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         windows_window::pump();
         host.poll()?;
         let found = host.image_requests();
-        if host.ready() && host.theme_ready() && host.unknown_image_count() == 1 && found.iter().any(|u| u.ends_with("/image.png")) && found.iter().any(|u| u.ends_with("/background.png")) {
+        if host.ready() && host.theme_ready() && found.iter().any(|u| u.ends_with("/image.png")) && found.iter().any(|u| u.ends_with("/background.png")) {
             assert!(!found.iter().any(|u| u.ends_with("/tracker.png")));
             success = true;
             break;
@@ -81,12 +81,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(path) = &capture_path { capture(&host, path)?; }
     // Supply a delayed, validated raster after the blocked first request.
     let gif=Arc::new(b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\x00\x00\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b".to_vec());
-    let unknown = format!("http://{address}/unknown.png");
-    assert!(!host.image_requests().contains(&unknown), "automatic permission must not approve unknown sizes");
-    assert!(!host.add_image(1, &unknown, gif.clone()));
-    host.set_unknown_image_access(1, true);
-    assert!(host.image_requests().contains(&unknown));
-    assert!(host.add_image(1, &unknown, gif.clone()));
     assert!(host.add_image(1, &format!("http://{address}/image.png"), gif));
     host.refresh()?;
     assert!(!host.ready() && host.refreshing(), "same-message reload should remain visible");

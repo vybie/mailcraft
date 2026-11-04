@@ -45,10 +45,6 @@ use super::view::Doc;
 use crate::theme::{Tokens, regular, semibold};
 use crate::{MailApp, UiState, icons};
 
-#[cfg(all(test, windows))]
-#[path = "remote_unknown_tests.rs"]
-mod unknown_tests;
-
 /// Most pictures asked for on behalf of one message while the program runs; the rest stay
 /// placeholders.
 pub const MAX_PER_MESSAGE: usize = 60;
@@ -135,8 +131,6 @@ pub struct Progress {
 pub struct RemotePictures {
     /// Messages the owner said "Download pictures" for.
     asked: VecDeque<Mark>,
-    /// Explicit per-message permission for images whose dimensions cannot yet be known.
-    unknown_asked: VecDeque<(u64, Mark)>,
     /// Addresses that messages on screen are waiting for. Gathered while they are laid out and
     /// taken up at the next frame: what is no longer on screen is no longer asked for.
     waiting: Vec<(Id, Arc<str>)>,
@@ -236,19 +230,6 @@ pub fn access(app: &MailApp, m: &Message) -> Access {
     // What lands in Junk E-mail is trusted by nobody's say-so but the owner's, message by message.
     let trusted = !in_junk(app, m) && (app.ui.download_pictures || remembered_and_vouched(app, m));
     if trusted || app.remote_pictures.asked.contains(&mark(m)) { Access::Allowed } else { Access::Blocked }
-}
-
-#[cfg(windows)]
-pub(crate) fn unknown_approved(app: &MailApp, m: &Message) -> bool {
-    app.remote_pictures.unknown_asked.contains(&(app.session.openings(), mark(m)))
-}
-
-#[cfg(windows)]
-fn approve_unknown(app: &mut MailApp, m: &Message) {
-    if download(app, &json!({"message": m.id})).is_err() { return; }
-    let key = (app.session.openings(), mark(m));
-    let asked = &mut app.remote_pictures.unknown_asked;
-    if !asked.contains(&key) { if asked.len() >= MAX_ASKED { asked.pop_front(); } asked.push_back(key); }
 }
 
 /// Take in the pictures the host has brought, and hand it the next ones that messages on
@@ -404,25 +385,7 @@ pub(crate) fn notice(hue: Color32, t: &Tokens) -> egui::Frame {
 /// owner can do about it, how downloading them is going, or how many could not be had. One
 /// glance says which: a tinted strip the width of the header, a mark, a few words in bold, the
 /// rest after them.
-pub fn line(app: &mut MailApp, ui: &mut Ui, m: &Message, has_remote: bool, unknown_pending: bool, access: Access, progress: Progress, place: Place, t: &Tokens) {
-    #[cfg(windows)]
-    if unknown_pending {
-        notice(t.blue, t).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal_wrapped(|ui| {
-                let said = if available(app) { tl!("Some pictures have unknown sizes. Loading them may tell the sender you opened this message.") } else { tl!("This build can't download pictures: they stay placeholders.") };
-                ui.label(egui::RichText::new(said).font(regular(11.5)).color(t.text));
-                if available(app) {
-                    let button = ui.add(egui::Link::new(egui::RichText::new(tl!("Download pictures")).font(semibold(11.5))));
-                    if place == Place::Pane { app.hit.add("downloadPictures", m.id, button.rect); }
-                    if button.clicked() { approve_unknown(app, m); }
-                }
-            });
-        });
-        return;
-    }
-    #[cfg(not(windows))]
-    let _ = unknown_pending;
+pub fn line(app: &mut MailApp, ui: &mut Ui, m: &Message, has_remote: bool, access: Access, progress: Progress, place: Place, t: &Tokens) {
     if !has_remote {
         return;
     }
@@ -683,7 +646,6 @@ fn clear(app: &mut MailApp) -> Result<Value, String> {
         None => 0,
     };
     app.remote_pictures.forget_all = true;
-    app.remote_pictures.unknown_asked.clear();
     app.remote_pictures.cache_generation = app.remote_pictures.cache_generation.wrapping_add(1);
     app.sender_images = Default::default();
     Ok(json!({"cleared": on_disk}))
