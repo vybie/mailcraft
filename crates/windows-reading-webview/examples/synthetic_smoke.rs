@@ -27,19 +27,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::temp_dir().join(format!("mailcraft-webview-smoke-{}", std::process::id()));
     let host = Host::new(window, dir.to_str().ok_or("bad temporary path")?, 1, || {})?;
     host.set_dark(true)?;
+    let gif=Arc::new(b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\x00\x00\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b".to_vec());
+    let mut embedded = String::new();
+    for i in 0..65 {
+        let url = format!("https://mailcraft.invalid/reading/asset/1/{i}");
+        assert!(host.add_embedded_image(1, &url, gif.clone()));
+        embedded.push_str(&format!("<img width=10 height=10 src='{url}'>"));
+    }
     let html = format!("<style>body{{background:#fff;color:#111}}.hero{{width:200px;height:100px;background-image:url(http://{address}/background.png)}}.long{{height:3000px}}</style>\
-        <div class='hero'></div><img width=40 height=40 src='http://{address}/image.png'>\
-        <img width=1 height=1 src='http://{address}/tracker.png'><div class='long'>Scrollable synthetic message</div>");
+        {embedded}<div class='hero'></div><img id='remote' width=40 height=40 src='http://{address}/image.png#section'>\
+        <img id='collapsed' alt='' src='http://{address}/collapsed.png'><img id='alt' alt='Picture' src='http://{address}/alt.png'>\
+        <img width=1 height=1 src='http://{address}/tracker.png'><img alt='' style='width:0;height:0' src='http://{address}/zero.png'>\
+        <div style='display:none'><img alt='' src='http://{address}/hidden.png'></div><div class='long'>Scrollable synthetic message</div>");
     host.show(&html, [0, 0, 800, 600])?;
-    host.set_image_access(1, true);
+    host.set_image_access(1, false);
     let until = Instant::now() + Duration::from_secs(15);
     let mut success = false;
     while Instant::now() < until {
         windows_window::pump();
         host.poll()?;
         let found = host.image_requests();
-        if host.ready() && host.theme_ready() && found.iter().any(|u| u.ends_with("/image.png")) && found.iter().any(|u| u.ends_with("/background.png")) {
+        if host.ready() && host.theme_ready() && ["/image.png", "/background.png", "/collapsed.png", "/alt.png"].iter().all(|suffix| found.iter().any(|u| u.ends_with(suffix))) {
             assert!(!found.iter().any(|u| u.ends_with("/tracker.png")));
+            assert!(!found.iter().any(|u| u.ends_with("/zero.png") || u.ends_with("/hidden.png")));
             success = true;
             break;
         }
@@ -80,8 +90,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(debug_assertions)]
     if let Some(path) = &capture_path { capture(&host, path)?; }
     // Supply a delayed, validated raster after the blocked first request.
-    let gif=Arc::new(b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\x00\x00\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b".to_vec());
-    assert!(host.add_image(1, &format!("http://{address}/image.png"), gif));
+    assert!(!host.add_image(1, &format!("http://{address}/collapsed.png"), gif.clone()));
+    host.set_image_access(1, true);
+    for path in ["image.png", "collapsed.png", "alt.png"] {
+        assert!(host.add_image(1, &format!("http://{address}/{path}"), gif.clone()));
+    }
     host.refresh()?;
     assert!(!host.ready() && host.refreshing(), "same-message reload should remain visible");
     let until = Instant::now() + Duration::from_secs(15);
@@ -93,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(host.ready(), "WebView2 did not complete the image refresh");
     assert!(!host.refreshing());
     #[cfg(debug_assertions)]
-    { assert_eq!(eval(&host,"window.scrollY")?,"900"); assert_eq!(eval(&host,"document.querySelector('img').naturalWidth")?,"1"); }
+    { assert_eq!(eval(&host,"window.scrollY")?,"900"); for id in ["remote", "collapsed", "alt"] { assert_eq!(eval(&host, &format!("document.querySelector('#{id}').naturalWidth"))?,"1"); } }
     #[cfg(debug_assertions)]
     if let Some(path) = &capture_path { capture(&host, &path.with_extension("reload.json"))?; }
     host.set_dark(false)?;

@@ -15,8 +15,12 @@ pub(crate) fn urls(json: &str) -> Option<Vec<String>> {
         let width = item.get("width")?.as_f64()?;
         let height = item.get("height")?.as_f64()?;
         let kind = item.get("kind")?.as_str()?;
-        if url.len() > 8192 || !width.is_finite() || !height.is_finite() || width <= 2.0 || height <= 2.0
-            || !matches!(kind, "image" | "background") { return None; }
+        let dimensions_ok = match kind {
+            "image" | "background" => width > 2.0 && height > 2.0,
+            "collapsed-image" => width == 0.0 && height == 0.0,
+            _ => false,
+        };
+        if url.len() > 8192 || !width.is_finite() || !height.is_finite() || !dimensions_ok { return None; }
         if (url.starts_with("https://") || url.starts_with("http://")) && !result.iter().any(|v| v == url) {
             result.push(url.to_string());
         }

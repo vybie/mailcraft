@@ -5,14 +5,17 @@
 (() => {
   "use strict";
   const MAX_ELEMENTS = 10000, MAX_IMAGES = 60, MAX_URL = 8192, MAX_CSS = 65536, MAX_ANCESTORS = 128;
-  const images = [], seen = new Set();
+  const images = [], seen = new Set(), collapsed = [];
   let scanned = 0, truncated = false;
 
   function absoluteHttp(value) {
     if (typeof value !== "string" || value.length === 0 || value.length > MAX_URL) return null;
     try {
       const url = new URL(value, document.baseURI);
-      return (url.protocol === "https:" || url.protocol === "http:") && url.href.length <= MAX_URL ? url.href : null;
+      if ((url.protocol !== "https:" && url.protocol !== "http:") || url.hostname === "mailcraft.invalid") return null;
+      // Fragments are not sent in HTTP requests, so the host sees the URL without them.
+      url.hash = "";
+      return url.href.length <= MAX_URL ? url.href : null;
     } catch (_) { return null; }
   }
   function tinyAttribute(element, name) {
@@ -20,6 +23,20 @@
     if (raw === null || !/^\s*\d+(?:\.\d+)?(?:px)?\s*$/i.test(raw)) return false;
     const number = parseFloat(raw);
     return Number.isFinite(number) && number <= 2;
+  }
+  function emptyClip(node, style) {
+    // Reject only an inset that provably clips the entire box, not ordinary rounded/cropped images.
+    const match = /^inset\(([^)]*)\)$/i.exec(style.clipPath);
+    if (!match) return false;
+    const parts = match[1].split(/\s+round\s+/i)[0].trim().split(/\s+/);
+    if (parts.length < 1 || parts.length > 4) return false;
+    const values = parts.map(part => /^(-?(?:\d+(?:\.\d+)?|\.\d+))(px|%)$/.exec(part));
+    if (values.some(value => !value)) return false;
+    const [top, right = top, bottom = top, left = right] = values;
+    const rect = node.getBoundingClientRect();
+    const pixels = (value, extent) => Number(value[1]) * (value[2] === "%" ? extent / 100 : 1);
+    return pixels(top, rect.height) + pixels(bottom, rect.height) >= rect.height
+        || pixels(left, rect.width) + pixels(right, rect.width) >= rect.width;
   }
   function visible(element) {
     const rect = element.getBoundingClientRect();
@@ -30,7 +47,7 @@
     let node = element, depth = 0;
     while (node && depth++ < MAX_ANCESTORS) {
       const style = getComputedStyle(node);
-      if (node.hidden || style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0 || style.contentVisibility === "hidden") return null;
+      if (node.hidden || style.display === "none" || style.visibility !== "visible" || Number(style.opacity) === 0 || style.contentVisibility === "hidden" || emptyClip(node, style)) return null;
       if (node === element) {
         const w = parseFloat(style.width), h = parseFloat(style.height);
         if ((Number.isFinite(w) && w <= 2) || (Number.isFinite(h) && h <= 2)) return null;
@@ -47,6 +64,46 @@
     }
     if (node || right - left <= 0 || bottom - top <= 0) return null;
     return { width: rect.width, height: rect.height };
+  }
+  // A blocked, unsized image can collapse to zero before it has intrinsic dimensions.
+  // Keep the normal visible-image path unchanged; this only adds collapsed candidates.
+  function collapsedImage(element) {
+    const rect = element.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || (rect.width !== 0 && rect.height !== 0)
+        || (rect.width > 0 && rect.width <= 2) || (rect.height > 0 && rect.height <= 2)
+        || rect.right + window.scrollX < 0 || rect.bottom + window.scrollY < 0) return false;
+    // Computed Typed OM retains auto instead of turning it into a zero-pixel layout value.
+    // Refuse unrecognised expressions: an explicit tiny value must not become an image.
+    try {
+      const style = element.computedStyleMap();
+      for (const prop of ["width", "height", "max-width", "max-height"]) {
+        const value = style.get(prop);
+        if (!value) return false;
+        const text = String(value).trim().toLowerCase();
+        if (text === "auto" || text === "none") continue;
+        const number = /^(\d+(?:\.\d+)?|\.\d+)(px|%)$/.exec(text);
+        if (!number || Number(number[1]) === 0 || (number[2] === "px" && Number(number[1]) <= 2)) return false;
+      }
+    } catch (_) { return false; }
+    let node = element, depth = 0;
+    while (node && depth++ < MAX_ANCESTORS) {
+      const style = getComputedStyle(node);
+      if (node.hidden || style.display === "none" || (node === element && style.display === "contents") || style.visibility !== "visible" || Number(style.opacity) === 0
+          || style.contentVisibility === "hidden" || style.clipPath !== "none" || style.clip !== "auto"
+          || style.transform !== "none" || style.filter !== "none" || style.maskImage !== "none") return false;
+      if (node !== element) {
+        const clipX = /^(hidden|clip|scroll|auto)$/.test(style.overflowX);
+        const clipY = /^(hidden|clip|scroll|auto)$/.test(style.overflowY);
+        if (clipX || clipY) {
+          const clip = node.getBoundingClientRect();
+          const outsideX = rect.width === 0 ? rect.left < clip.left || rect.left >= clip.right : rect.right <= clip.left || rect.left >= clip.right;
+          const outsideY = rect.height === 0 ? rect.top < clip.top || rect.top >= clip.bottom : rect.bottom <= clip.top || rect.top >= clip.bottom;
+          if ((clipX && (clip.width <= 2 || outsideX)) || (clipY && (clip.height <= 2 || outsideY))) return false;
+        }
+      }
+      node = node.parentElement;
+    }
+    return !node;
   }
   function add(value, dimensions, kind) {
     const url = absoluteHttp(value);
@@ -142,11 +199,13 @@
           const width = Math.max(0, element.clientWidth - padding("paddingLeft") - padding("paddingRight") - 1);
           const height = Math.max(0, element.clientHeight - padding("paddingTop") - padding("paddingBottom") - 1);
           backgrounds(style.backgroundImage, style.backgroundSize, dimensions, width, height);
-        }
+        } else if (isImage && collapsed.length < MAX_IMAGES && collapsedImage(element)) collapsed.push(element.currentSrc || element.src);
       }
       element = walker.nextNode();
     }
     if (element) truncated = true;
+    // Images that were already eligible retain priority over newly discovered collapsed ones.
+    for (const url of collapsed) add(url, {width: 0, height: 0}, "collapsed-image");
   }
   return { version: 1, images, scanned, truncated };
 })()
