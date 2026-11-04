@@ -6576,11 +6576,6 @@ msgstr ""
 msgid "Renewing the sign-in…"
 msgstr ""
 
-#. command label
-#: crates/engine/src/cmd/folder.rs
-msgid "Reorder Favorites"
-msgstr ""
-
 #. interface
 #: crates/ui-egui/src/forms.rs
 msgid "Repeats"
@@ -7894,11 +7889,6 @@ msgstr ""
 #. interface
 #: crates/ui-egui/src/mail_view/server_rows.rs
 msgid "Some of the search was checked on this computer"
-msgstr ""
-
-#. interface
-#: crates/ui-egui/src/reading/remote.rs
-msgid "Some pictures have unknown sizes. Loading them may tell the sender you opened this message."
 msgstr ""
 
 #. interface

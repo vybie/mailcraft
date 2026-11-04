@@ -7918,11 +7918,6 @@ msgstr "Handtekening hernoemen"
 msgid "Renewing the sign-in…"
 msgstr "Bezig met vernieuwen van de aanmelding…"
 
-#. command label
-#: crates/engine/src/cmd/folder.rs
-msgid "Reorder Favorites"
-msgstr ""
-
 #. interface
 #: crates/ui-egui/src/forms.rs
 #, fuzzy
@@ -9508,11 +9503,6 @@ msgstr "Een deel ervan staat er nog, zoals hierboven vermeld. MailCraft wordt af
 #, fuzzy
 msgid "Some of the search was checked on this computer"
 msgstr "Een deel van de zoekopdracht is op deze computer gecontroleerd"
-
-#. interface
-#: crates/ui-egui/src/reading/remote.rs
-msgid "Some pictures have unknown sizes. Loading them may tell the sender you opened this message."
-msgstr ""
 
 #. interface
 #: crates/ui-egui/src/meeting_dialogs.rs crates/ui-egui/src/reading/invitation.rs
