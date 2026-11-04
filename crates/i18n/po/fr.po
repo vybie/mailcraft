@@ -7682,6 +7682,11 @@ msgstr "Renommer la signature"
 msgid "Renewing the sign-in…"
 msgstr "Renouvellement de la connexion…"
 
+#. command label
+#: crates/engine/src/cmd/folder.rs
+msgid "Reorder Favorites"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/forms.rs
 #, fuzzy
@@ -9229,6 +9234,11 @@ msgstr ""
 #, fuzzy
 msgid "Some of the search was checked on this computer"
 msgstr "Une partie de la recherche a été vérifiée sur cet ordinateur"
+
+#. interface
+#: crates/ui-egui/src/reading/remote.rs
+msgid "Some pictures have unknown sizes. Loading them may tell the sender you opened this message."
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/meeting_dialogs.rs crates/ui-egui/src/reading/invitation.rs
