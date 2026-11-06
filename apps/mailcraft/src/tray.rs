@@ -242,7 +242,7 @@ fn draw_badge_text(image: &mut image::RgbaImage, label: &str) -> bool {
         })
     });
     let Some(font) = font else { return false };
-    let scale = PxScale::from(if label.len() > 2 { 60.0 } else { 76.0 });
+    let scale = PxScale::from(if label.len() > 2 { 76.0 } else { 100.0 });
     let scaled = font.as_scaled(scale);
     let mut glyphs = Vec::new();
     let mut x = 0.0;
