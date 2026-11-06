@@ -182,6 +182,12 @@ fn badge_icon(unread: usize) -> IconData {
             }
         }
     }
+    let label = if unread > 99 { "99+".to_string() } else { unread.to_string() };
+    if draw_badge_text(&mut image, &label) {
+        let image = image::imageops::resize(&image, 64, 64, image::imageops::FilterType::Lanczos3);
+        return IconData { rgba: image.into_raw(), width: 64, height: 64 };
+    }
+    // Keep a readable count if both the system font and the bundled fallback fail to load.
     const DIGITS: [[u8; 7]; 11] = [
         [14, 17, 19, 21, 25, 17, 14],
         [4, 12, 4, 4, 4, 4, 14],
@@ -195,7 +201,6 @@ fn badge_icon(unread: usize) -> IconData {
         [14, 17, 17, 15, 1, 1, 14],
         [0, 4, 4, 31, 4, 4, 0],
     ];
-    let label = if unread > 99 { "99+".to_string() } else { unread.to_string() };
     let scale = if label.len() > 2 { 6_i32 } else { 9_i32 };
     let width = (label.len() as i32 * 6 - 1) * scale;
     let left = 64 - width / 2;
@@ -217,4 +222,60 @@ fn badge_icon(unread: usize) -> IconData {
     }
     let image = image::imageops::resize(&image, 64, 64, image::imageops::FilterType::Lanczos3);
     IconData { rgba: image.into_raw(), width: 64, height: 64 }
+}
+
+/// Rasterize real font outlines at badge resolution; Windows supplies Segoe UI.
+fn draw_badge_text(image: &mut image::RgbaImage, label: &str) -> bool {
+    use ab_glyph::{Font, FontArc, PxScale, ScaleFont, point};
+    use std::sync::OnceLock;
+
+    static FONT: OnceLock<Option<FontArc>> = OnceLock::new();
+    let font = FONT.get_or_init(|| {
+        let system = std::env::var_os("WINDIR")
+            .and_then(|dir| std::fs::read(std::path::PathBuf::from(dir).join("Fonts").join("segoeui.ttf")).ok())
+            .and_then(|bytes| FontArc::try_from_vec(bytes).ok());
+        system.or_else(|| {
+            let definitions = egui::FontDefinitions::default();
+            let name = definitions.families.get(&egui::FontFamily::Proportional)?.first()?;
+            let font = definitions.font_data.get(name)?;
+            FontArc::try_from_vec(font.bytes().to_vec()).ok()
+        })
+    });
+    let Some(font) = font else { return false };
+    let scale = PxScale::from(if label.len() > 2 { 60.0 } else { 76.0 });
+    let scaled = font.as_scaled(scale);
+    let mut glyphs = Vec::new();
+    let mut x = 0.0;
+    let mut previous = None;
+    for ch in label.chars() {
+        let id = font.glyph_id(ch);
+        if let Some(prior) = previous { x += scaled.kern(prior, id); }
+        let glyph = id.with_scale_and_position(scale, point(x, 0.0));
+        x += scaled.h_advance(id);
+        previous = Some(id);
+        if let Some(outline) = font.outline_glyph(glyph) { glyphs.push(outline); }
+    }
+    if glyphs.is_empty() { return false; }
+    let bounds = glyphs.iter().map(|g| g.px_bounds()).fold(None, |acc: Option<(f32, f32, f32, f32)>, b| {
+        Some(acc.map_or((b.min.x, b.min.y, b.max.x, b.max.y), |(x0, y0, x1, y1)| {
+            (x0.min(b.min.x), y0.min(b.min.y), x1.max(b.max.x), y1.max(b.max.y))
+        }))
+    });
+    let Some((x0, y0, x1, y1)) = bounds else { return false };
+    let offset_x = ((128.0 - (x1 - x0)) / 2.0 - x0).round() as i32;
+    let offset_y = ((128.0 - (y1 - y0)) / 2.0 - y0).round() as i32;
+    for glyph in glyphs {
+        let bounds = glyph.px_bounds();
+        glyph.draw(|x, y, coverage| {
+            let x = bounds.min.x as i32 + x as i32 + offset_x;
+            let y = bounds.min.y as i32 + y as i32 + offset_y;
+            if x < 0 || y < 0 { return; }
+            if let Some(pixel) = image.get_pixel_mut_checked(x as u32, y as u32) {
+                for (channel, ink) in pixel.0.iter_mut().take(3).zip([35.0, 29.0, 19.0]) {
+                    *channel = (*channel as f32 * (1.0 - coverage) + ink * coverage).round() as u8;
+                }
+            }
+        });
+    }
+    true
 }
