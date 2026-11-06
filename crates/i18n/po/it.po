@@ -8066,8 +8066,8 @@ msgstr "Posta recente"
 msgid "Recurrence"
 msgstr "Ricorrenza"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Redo"
 msgstr "Ripeti"
@@ -8077,12 +8077,6 @@ msgstr "Ripeti"
 #, fuzzy
 msgid "Redo Typing"
 msgstr "Ripeti digitazione"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Redo {what}"
-msgstr "Ripeti {what}"
 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
@@ -8316,6 +8310,11 @@ msgstr "Rinomina firma"
 #, fuzzy
 msgid "Renewing the sign-in…"
 msgstr "Rinnovo dell'accesso…"
+
+#. command label
+#: crates/engine/src/cmd/folder.rs
+msgid "Reorder Favorites"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/forms.rs crates/ui-egui/src/meeting_dialogs/share.rs
@@ -8932,7 +8931,7 @@ msgid "Search by subject or sender"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/ribbon.rs
+#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Search commands"
 msgstr "Cerca comandi"
@@ -9248,8 +9247,8 @@ msgstr ""
 "Invia/Ricevi\n"
 "tutte le cartelle"
 
-#. command label, interface
-#: crates/engine/src/cmd/account.rs crates/ui-egui/src/chrome.rs crates/ui-egui/src/lib.rs
+#. command label, ribbon
+#: crates/engine/src/cmd/account.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Send/Receive All Folders"
 msgstr "Invia/Ricevi tutte le cartelle"
@@ -9307,7 +9306,7 @@ msgid "Sending"
 msgstr "Invio"
 
 #. interface
-#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
+#: crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
 #, fuzzy
 msgid "Sending and receiving…"
 msgstr "Invio e ricezione…"
@@ -9524,8 +9523,8 @@ msgstr "Mostra collaboratori"
 msgid "Show Only This Calendar"
 msgstr "Mostra solo questo calendario"
 
-#. command label, interface
-#: crates/ui-egui/src/lib.rs crates/ui-egui/src/nav.rs
+#. command label
+#: crates/ui-egui/src/lib.rs
 #, fuzzy
 msgid "Show Outlook's Favorites"
 msgstr "Mostra i Preferiti di Outlook"
@@ -9845,7 +9844,7 @@ msgid "Sign in to {owner} first (Send/Receive), then add the shared mailbox."
 msgstr "Accedere prima a {owner} (Invia/Ricevi), poi aggiungere la cassetta postale condivisa."
 
 #. interface
-#: crates/ui-egui/src/favorites_sync.rs crates/ui-egui/src/nav.rs
+#: crates/ui-egui/src/favorites_sync.rs
 #, fuzzy
 msgid "Sign in with Microsoft once more to let MailCraft read the folders you keep under Favorites in Outlook. They are only read, never changed, and everything else stays as it is."
 msgstr "Accedere con Microsoft ancora una volta per consentire a MailCraft di leggere le cartelle tenute nei Preferiti di Outlook. Vengono solo lette, mai modificate, e tutto il resto rimane com'è."
@@ -12418,8 +12417,8 @@ msgstr "Digitare il proprio indirizzo di posta elettronica e MailCraft trova il 
 msgid "Underline"
 msgstr "Sottolineato"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Undo"
 msgstr "Annulla"
@@ -12429,12 +12428,6 @@ msgstr "Annulla"
 #, fuzzy
 msgid "Undo Typing"
 msgstr "Annulla digitazione"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Undo {what}"
-msgstr "Annulla {what}"
 
 #. interface, name
 #: crates/engine/src/session.rs crates/ui-egui/src/advanced_search.rs crates/ui-egui/src/folder_properties.rs
@@ -16193,6 +16186,14 @@ msgstr "«{subject}» era troppo grande da scaricare: qui c'è solo la sua intes
 #, fuzzy
 msgid "“{subject}” wasn't found on its server, so it can't be forwarded as an attachment"
 msgstr "«{subject}» non è stato trovato sul suo server, quindi non può essere inoltrato come allegato"
+
+#, fuzzy
+#~ msgid "Redo {what}"
+#~ msgstr "Ripeti {what}"
+
+#, fuzzy
+#~ msgid "Undo {what}"
+#~ msgstr "Annulla {what}"
 
 #, fuzzy
 #~ msgid "Permanently Delete"

@@ -7000,19 +7000,14 @@ msgstr ""
 msgid "Recurrence"
 msgstr ""
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 msgid "Redo"
 msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/format.rs
 msgid "Redo Typing"
-msgstr ""
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-msgid "Redo {what}"
 msgstr ""
 
 #. ribbon
@@ -7209,6 +7204,11 @@ msgstr ""
 #. interface
 #: crates/ui-egui/src/lib.rs
 msgid "Renewing the sign-in…"
+msgstr ""
+
+#. command label
+#: crates/engine/src/cmd/folder.rs
+msgid "Reorder Favorites"
 msgstr ""
 
 #. interface
@@ -7739,7 +7739,7 @@ msgid "Search by subject or sender"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/ribbon.rs
+#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ribbon.rs
 msgid "Search commands"
 msgstr ""
 
@@ -8014,8 +8014,8 @@ msgid ""
 "All Folders"
 msgstr ""
 
-#. command label, interface
-#: crates/engine/src/cmd/account.rs crates/ui-egui/src/chrome.rs crates/ui-egui/src/lib.rs
+#. command label, ribbon
+#: crates/engine/src/cmd/account.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/ribbon.rs
 msgid "Send/Receive All Folders"
 msgstr ""
 
@@ -8065,7 +8065,7 @@ msgid "Sending"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
+#: crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
 msgid "Sending and receiving…"
 msgstr ""
 
@@ -8255,8 +8255,8 @@ msgstr ""
 msgid "Show Only This Calendar"
 msgstr ""
 
-#. command label, interface
-#: crates/ui-egui/src/lib.rs crates/ui-egui/src/nav.rs
+#. command label
+#: crates/ui-egui/src/lib.rs
 msgid "Show Outlook's Favorites"
 msgstr ""
 
@@ -8535,7 +8535,7 @@ msgid "Sign in to {owner} first (Send/Receive), then add the shared mailbox."
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/favorites_sync.rs crates/ui-egui/src/nav.rs
+#: crates/ui-egui/src/favorites_sync.rs
 msgid "Sign in with Microsoft once more to let MailCraft read the folders you keep under Favorites in Outlook. They are only read, never changed, and everything else stays as it is."
 msgstr ""
 
@@ -10814,19 +10814,14 @@ msgstr ""
 msgid "Underline"
 msgstr ""
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 msgid "Undo"
 msgstr ""
 
 #. command label
 #: crates/engine/src/cmd/format.rs
 msgid "Undo Typing"
-msgstr ""
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-msgid "Undo {what}"
 msgstr ""
 
 #. interface, name

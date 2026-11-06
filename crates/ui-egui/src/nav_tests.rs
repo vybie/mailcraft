@@ -371,4 +371,3 @@ fn favorites_drag_across_accounts_and_survive_reopening() {
     std::fs::remove_file(path).unwrap();
     assert_eq!(mailcraft_engine::cmd::folder::favorites(&Session::new(reopened)), ordered);
 }
-

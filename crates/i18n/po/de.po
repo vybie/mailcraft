@@ -8058,8 +8058,8 @@ msgstr "Neueste E-Mails"
 msgid "Recurrence"
 msgstr "Serie"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Redo"
 msgstr "Wiederholen"
@@ -8069,12 +8069,6 @@ msgstr "Wiederholen"
 #, fuzzy
 msgid "Redo Typing"
 msgstr "Eingabe wiederholen"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Redo {what}"
-msgstr "{what} wiederholen"
 
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
@@ -8306,6 +8300,11 @@ msgstr "Signatur umbenennen"
 #, fuzzy
 msgid "Renewing the sign-in…"
 msgstr "Anmeldung wird erneuert…"
+
+#. command label
+#: crates/engine/src/cmd/folder.rs
+msgid "Reorder Favorites"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/forms.rs crates/ui-egui/src/meeting_dialogs/share.rs
@@ -8920,7 +8919,7 @@ msgid "Search by subject or sender"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/ribbon.rs
+#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Search commands"
 msgstr "Befehle suchen"
@@ -9236,8 +9235,8 @@ msgstr ""
 "Alle Ordner\n"
 "senden/empfangen"
 
-#. command label, interface
-#: crates/engine/src/cmd/account.rs crates/ui-egui/src/chrome.rs crates/ui-egui/src/lib.rs
+#. command label, ribbon
+#: crates/engine/src/cmd/account.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Send/Receive All Folders"
 msgstr "Alle Ordner senden/empfangen"
@@ -9295,7 +9294,7 @@ msgid "Sending"
 msgstr "Senden"
 
 #. interface
-#: crates/ui-egui/src/chrome.rs crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
+#: crates/ui-egui/src/ews_mail.rs crates/ui-egui/src/inbox_pass.rs crates/ui-egui/src/jmap_mail.rs crates/ui-egui/src/lib.rs crates/ui-egui/src/shared_mailboxes.rs
 #, fuzzy
 msgid "Sending and receiving…"
 msgstr "Senden und Empfangen…"
@@ -9512,8 +9511,8 @@ msgstr "Mitwirkende anzeigen"
 msgid "Show Only This Calendar"
 msgstr "Nur diesen Kalender anzeigen"
 
-#. command label, interface
-#: crates/ui-egui/src/lib.rs crates/ui-egui/src/nav.rs
+#. command label
+#: crates/ui-egui/src/lib.rs
 #, fuzzy
 msgid "Show Outlook's Favorites"
 msgstr "Favoriten von Outlook anzeigen"
@@ -9833,7 +9832,7 @@ msgid "Sign in to {owner} first (Send/Receive), then add the shared mailbox."
 msgstr "Melden Sie sich zuerst bei {owner} an (Senden/Empfangen) und fügen Sie dann das freigegebene Postfach hinzu."
 
 #. interface
-#: crates/ui-egui/src/favorites_sync.rs crates/ui-egui/src/nav.rs
+#: crates/ui-egui/src/favorites_sync.rs
 #, fuzzy
 msgid "Sign in with Microsoft once more to let MailCraft read the folders you keep under Favorites in Outlook. They are only read, never changed, and everything else stays as it is."
 msgstr "Melden Sie sich noch einmal bei Microsoft an, damit MailCraft die Ordner lesen kann, die Sie in Outlook unter Favoriten haben. Sie werden nur gelesen, nie geändert, und alles andere bleibt, wie es ist."
@@ -12404,8 +12403,8 @@ msgstr "Geben Sie Ihre E-Mail-Adresse ein, und MailCraft findet den Rest: Micros
 msgid "Underline"
 msgstr "Unterstrichen"
 
-#. command label, name
-#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs
+#. command label, name, ribbon
+#: crates/engine/src/cmd/edit.rs crates/ui-egui/src/menubar.rs crates/ui-egui/src/ribbon.rs
 #, fuzzy
 msgid "Undo"
 msgstr "Rückgängig"
@@ -12415,12 +12414,6 @@ msgstr "Rückgängig"
 #, fuzzy
 msgid "Undo Typing"
 msgstr "Eingabe rückgängig"
-
-#. interface
-#: crates/ui-egui/src/chrome.rs
-#, fuzzy
-msgid "Undo {what}"
-msgstr "{what} rückgängig machen"
 
 #. interface, name
 #: crates/engine/src/session.rs crates/ui-egui/src/advanced_search.rs crates/ui-egui/src/folder_properties.rs
@@ -16177,6 +16170,14 @@ msgstr "„{subject}“ war zu groß zum Herunterladen: nur die Kopfzeilen sind 
 #, fuzzy
 msgid "“{subject}” wasn't found on its server, so it can't be forwarded as an attachment"
 msgstr "„{subject}“ wurde auf seinem Server nicht gefunden, daher kann die Nachricht nicht als Anlage weitergeleitet werden"
+
+#, fuzzy
+#~ msgid "Redo {what}"
+#~ msgstr "{what} wiederholen"
+
+#, fuzzy
+#~ msgid "Undo {what}"
+#~ msgstr "{what} rückgängig machen"
 
 #, fuzzy
 #~ msgid "Permanently Delete"
