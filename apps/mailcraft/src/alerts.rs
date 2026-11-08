@@ -290,11 +290,11 @@ mod toasts {
     use std::sync::Mutex;
     use std::sync::mpsc::Receiver;
 
-    use mailcraft_ui_egui::alerts::{AlertHost, AlertTrouble, DesktopAlert};
+    use mailcraft_ui_egui::alerts::{AlertAction, AlertHost, AlertTrouble, DesktopAlert, Opens};
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::Foundation::TypedEventHandler;
-    use windows::UI::Notifications::{NotificationSetting, ToastNotification, ToastNotificationManager, ToastTemplateType};
-    use windows::core::{HSTRING, IInspectable};
+    use windows::UI::Notifications::{NotificationSetting, ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
+    use windows::core::{HSTRING, IInspectable, Interface};
 
     use super::{Clicks, drain};
 
@@ -310,13 +310,17 @@ mod toasts {
         installed: bool,
         turned_off: Mutex<bool>,
         kept: Mutex<VecDeque<ToastNotification>>,
+        action_tx: std::sync::mpsc::Sender<(u64, AlertAction)>,
+        action_rx: Receiver<(u64, AlertAction)>,
+        ctx: egui::Context,
     }
 
     impl Toasts {
         pub fn new(ctx: egui::Context) -> Toasts {
-            let (clicks, rx) = Clicks::new(ctx);
+            let (clicks, rx) = Clicks::new(ctx.clone());
             let installed = crate::install::this_copy() == crate::install::Install::Msi;
-            Toasts { clicks, rx, installed, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()) }
+            let (action_tx, action_rx) = std::sync::mpsc::channel();
+            Toasts { clicks, rx, installed, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()), action_tx, action_rx, ctx }
         }
 
         fn toast(&self, alert: &DesktopAlert) -> windows::core::Result<()> {
@@ -331,16 +335,44 @@ mod toasts {
                 }
             }
             // A title line and a body line, as text nodes: nothing of the message is read as XML.
-            let xml: XmlDocument = ToastNotificationManager::GetTemplateContent(ToastTemplateType::ToastText02)?;
+            let xml = XmlDocument::new()?;
+            xml.LoadXml(&HSTRING::from("<toast><visual><binding template=\"ToastGeneric\"><text/><text/></binding></visual></toast>"))?;
             let lines = xml.GetElementsByTagName(&HSTRING::from("text"))?;
             for (at, text) in [(0u32, alert.title.as_str()), (1, alert.body.as_str())] {
                 let node = xml.CreateTextNode(&HSTRING::from(text))?;
                 lines.GetAt(at)?.AppendChild(&node)?;
             }
+            if matches!(alert.opens, Opens::Message { .. }) {
+                let actions = xml.CreateElement(&HSTRING::from("actions"))?;
+                for (symbol, argument) in [("✕", "dismiss"), ("✉", "read"), ("🗑", "delete")] {
+                    let button = xml.CreateElement(&HSTRING::from("action"))?;
+                    button.SetAttribute(&HSTRING::from("content"), &HSTRING::from(symbol))?;
+                    button.SetAttribute(&HSTRING::from("arguments"), &HSTRING::from(argument))?;
+                    actions.AppendChild(&button)?;
+                }
+                xml.DocumentElement()?.AppendChild(&actions)?;
+            }
             let toast = ToastNotification::CreateToastNotification(&xml)?;
             let (clicks, key) = (self.clicks.clone(), alert.key);
-            toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, _| {
-                clicks.clicked(key);
+            let (tx, ctx) = (self.action_tx.clone(), self.ctx.clone());
+            toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
+                let argument = args
+                    .as_ref()
+                    .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
+                    .and_then(|a| a.Arguments().ok())
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                let action = match argument.as_str() {
+                    "read" => Some(AlertAction::MarkRead),
+                    "delete" => Some(AlertAction::Delete),
+                    _ => None,
+                };
+                if let Some(action) = action {
+                    let _ = tx.send((key, action));
+                    ctx.request_repaint();
+                } else if argument.is_empty() {
+                    clicks.clicked(key);
+                }
                 Ok(())
             }))?;
             notifier.Show(&toast)?;
@@ -369,6 +401,9 @@ mod toasts {
         }
         fn clicked(&self) -> Vec<u64> {
             drain(&self.rx)
+        }
+        fn actions(&self) -> Vec<(u64, AlertAction)> {
+            self.action_rx.try_iter().take(20).collect()
         }
     }
 }

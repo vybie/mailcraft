@@ -129,6 +129,16 @@ pub trait AlertHost {
     fn clicked(&self) -> Vec<u64> {
         Vec::new()
     }
+    /// Message-specific actions from notifications.
+    fn actions(&self) -> Vec<(u64, AlertAction)> {
+        Vec::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AlertAction {
+    MarkRead,
+    Delete,
 }
 
 /// The window's part.
@@ -136,6 +146,7 @@ pub trait AlertHost {
 pub struct State {
     /// What was shown, oldest first, at most [`KEPT`].
     shown: VecDeque<DesktopAlert>,
+    paths: VecDeque<(u64, Option<std::path::PathBuf>)>,
     next_key: u64,
     /// The mailbox as the last frame without a Send/Receive found it, and the file it was.
     idle: Option<(InboxMark, Option<std::path::PathBuf>)>,
@@ -228,7 +239,9 @@ fn show(app: &mut MailApp, planned: Vec<Planned>) {
             Ok(()) => {
                 if app.alerts.shown.len() >= KEPT {
                     app.alerts.shown.pop_front();
+                    app.alerts.paths.pop_front();
                 }
+                app.alerts.paths.push_back((alert.key, app.session.path.clone()));
                 app.alerts.shown.push_back(alert);
             }
             // (Nothing of the message in the log: only that it failed, and why.)
@@ -278,9 +291,26 @@ pub fn tick(app: &mut MailApp, ctx: &egui::Context) {
 fn clicks(app: &mut MailApp, ctx: &egui::Context) {
     let Some(host) = &app.services.alert else { return };
     let keys = host.clicked();
+    let actions = host.actions();
     for key in keys.into_iter().take(20) {
         let Some(opens) = app.alerts.shown.iter().find(|a| a.key == key).map(|a| a.opens) else { continue };
         open(app, ctx, opens);
+    }
+    for (key, action) in actions.into_iter().take(20) {
+        if !app.alerts.paths.iter().any(|(k, path)| *k == key && *path == app.session.path) {
+            continue;
+        }
+        let Some(Opens::Message { message, folder }) = app.alerts.shown.iter().find(|a| a.key == key).map(|a| a.opens) else { continue };
+        if !app.session.mailbox.message(message).is_some_and(|m| m.folder == folder) {
+            continue;
+        }
+        let command = match action {
+            AlertAction::MarkRead => "mail.markRead",
+            AlertAction::Delete => "mail.delete",
+        };
+        if let Err(e) = app.execute(command, json!({"ids": [message]})) {
+            log::warn!("notification action failed: {e}");
+        }
     }
 }
 
