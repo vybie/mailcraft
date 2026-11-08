@@ -5031,6 +5031,13 @@ impl MailApp {
         text_menu::finish(&ctx, menus);
     }
 
+    /// A quit held by a draft question, a secondary window or the background saver.
+    pub fn quit_in_progress(&self) -> bool {
+        self.closing_after_save.is_some()
+            || self.windows.quitting()
+            || matches!(&self.dialog, Some(dialogs::Dialog::DiscardDraft { then, .. }) if then == "quit")
+    }
+
     /// The window's close button. MailCraft saves by itself, so closing only waits for a message
     /// being written: `false` keeps the window open and asks about it.
     pub fn close_requested(&mut self) -> bool {

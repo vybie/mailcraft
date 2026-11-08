@@ -204,6 +204,10 @@ impl Windows {
         self.open.iter_mut().find(|w| w.id == id)?.what.form_mut()
     }
 
+    pub(crate) fn quitting(&self) -> bool {
+        self.quitting
+    }
+
     /// How many windows are open.
     pub fn len(&self) -> usize {
         self.open.len()
