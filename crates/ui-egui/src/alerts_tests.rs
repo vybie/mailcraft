@@ -342,3 +342,17 @@ fn pass(ctx: &egui::Context, raw: egui::RawInput, f: impl FnOnce(&egui::Context)
     f(ctx);
     ctx.end_pass().textures_delta.clear();
 }
+
+#[test]
+fn an_alert_restores_a_hidden_main_window_before_opening_its_target() {
+    let (mut app, _, _, inbox) = window();
+    let ctx = egui::Context::default();
+    let out = ctx.run_logic(&egui::RawInput::default(), |ctx| {
+        open(&mut app, ctx, Opens::Folder { folder: inbox });
+    });
+    let commands = out.viewport_commands.get(&egui::ViewportId::ROOT).unwrap();
+    assert!(commands.contains(&egui::ViewportCommand::Visible(true)));
+    assert!(commands.contains(&egui::ViewportCommand::Minimized(false)));
+    assert!(commands.contains(&egui::ViewportCommand::Focus));
+    assert_eq!(app.session.view.folder, inbox);
+}

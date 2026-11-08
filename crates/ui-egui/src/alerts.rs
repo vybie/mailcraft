@@ -286,6 +286,7 @@ fn clicks(app: &mut MailApp, ctx: &egui::Context) {
 
 /// Bring the window in front and open what an alert was about.
 pub fn open(app: &mut MailApp, ctx: &egui::Context, opens: Opens) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     match opens {
