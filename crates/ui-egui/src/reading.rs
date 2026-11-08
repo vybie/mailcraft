@@ -74,6 +74,18 @@ pub const MAX_BODY_WIDTH: f32 = 860.0;
 /// the work of laying it out, not a measure.
 pub const MAX_TEXT_WIDTH: f32 = 4_000.0;
 
+/// Give the reading pane a more comfortable wheel distance on Windows.
+fn body_scroll() -> egui::ScrollArea {
+    let area = egui::ScrollArea::both().auto_shrink([false, false]);
+    #[cfg(target_os = "windows")]
+    let area = area.wheel_scroll_multiplier(vec2(1.0, 2.0));
+    area
+}
+
+#[cfg(test)]
+#[path = "reading/scroll_tests.rs"]
+mod scroll_tests;
+
 /// Where a message is shown. One that is on screen in two places is laid out for each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Place {
@@ -108,7 +120,7 @@ pub fn show_file_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place
     let room = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         view::page(app, place, ui).show(ui, |ui| {
-            egui::ScrollArea::both().auto_shrink([false, false]).id_salt(("body", place)).show(ui, |ui| {
+            body_scroll().id_salt(("body", place)).show(ui, |ui| {
                 egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 12, bottom: 24 }).show(ui, |ui| {
                     view::show(app, ui, m, place, access);
                 });
@@ -234,7 +246,7 @@ pub fn show_message(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Pla
     ui.scope_builder(egui::UiBuilder::new().max_rect(room), |ui| {
         view::page(app, place, ui).show(ui, |ui| {
             // Sideways too: a data table is never squeezed below its words, so a wide one scrolls.
-            egui::ScrollArea::both().auto_shrink([false, false]).id_salt(("body", m.id)).show(ui, |ui| {
+            body_scroll().id_salt(("body", m.id)).show(ui, |ui| {
                 egui::Frame::NONE.inner_margin(egui::Margin { left: 20, right: 20, top: 12, bottom: 24 }).show(ui, |ui| {
                     view::show(app, ui, m, place, access);
                 });
