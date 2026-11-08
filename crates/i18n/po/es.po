@@ -8880,6 +8880,11 @@ msgstr "Cambiar nombre de firma"
 msgid "Renewing the sign-in…"
 msgstr "Renovando el inicio de sesión…"
 
+#. command label
+#: crates/engine/src/cmd/folder.rs
+msgid "Reorder Favorites"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/forms.rs crates/ui-egui/src/meeting_dialogs/share.rs
 #, fuzzy

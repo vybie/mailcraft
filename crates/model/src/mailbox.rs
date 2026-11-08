@@ -1100,6 +1100,9 @@ pub struct Mailbox {
     /// a server's list has been taken in.
     #[serde(skip_serializing_if = "Vec::is_empty", deserialize_with = "crate::sync::lenient_list")]
     pub favorites_from_server: Vec<ServerFavorites>,
+    /// The owner’s local ordering of Favorites across accounts.
+    #[serde(skip_serializing_if = "Vec::is_empty", deserialize_with = "crate::load_limit::capped_vec")]
+    pub favorite_order: Vec<Id>,
     /// Changes to what a Microsoft account's server has that its next run is to tell it and that
     /// can't be worked out by comparing ([`Queued`]), oldest first.
     #[serde(skip_serializing_if = "Vec::is_empty", deserialize_with = "crate::sync::lenient_list")]
@@ -1168,6 +1171,7 @@ impl Default for Mailbox {
             task_place: None,
             event_checks: Vec::new(),
             favorites_from_server: Vec::new(),
+            favorite_order: Vec::new(),
             queued: Vec::new(),
             account_categories: BTreeMap::new(),
             server_categories: BTreeMap::new(),

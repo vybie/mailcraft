@@ -373,6 +373,9 @@ fn picked_in_list(ui: &Ui) -> bool {
     ui.data(|d| d.get_temp::<bool>(egui::Id::unique("folder_picked_in_list"))).unwrap_or(false)
 }
 
+#[derive(Clone)]
+struct FavoriteDrag(Id);
+
 /// A folder's row, `selected` when it is the one the folder in view is highlighted in. `key` tells
 /// the Favorites' rows (`fav`) from the accounts' (`tree`).
 fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_children: bool, key: &str, count: Count, selected: bool) {
@@ -381,7 +384,8 @@ fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_chil
     let name = if key == "fav" { result_folder_label(&app.session.mailbox, f) } else { folder_name(f).to_string() };
     let t = Tokens::get(ui.ctx());
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
-    let resp = ui.interact(r, ui.scope_id().with((key, f.id)), Sense::click());
+    let sense = if key == "fav" { Sense::click_and_drag() } else { Sense::click() };
+    let resp = ui.interact(r, ui.scope_id().with((key, f.id)), sense);
     app.hit.add("folder", f.id, r);
     let row = highlight(r);
     if selected {
@@ -428,6 +432,24 @@ fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_chil
     if resp.clicked() {
         ui.data_mut(|d| d.insert_temp(egui::Id::unique("folder_picked_in_list"), key == "tree"));
         let _ = app.run("folder.select", json!({"id": f.id}));
+    }
+    if key == "fav" {
+        if resp.drag_started() {
+            resp.dnd_set_drag_payload(FavoriteDrag(f.id));
+        }
+        if let Some(drag) = resp.dnd_hover_payload::<FavoriteDrag>()
+            && drag.0 != f.id
+        {
+            let after = ui.input(|i| i.pointer.hover_pos().is_some_and(|pos| pos.y >= r.center().y));
+            let y = if after { row.max.y } else { row.min.y };
+            ui.painter().line_segment([pos2(row.min.x, y), pos2(row.max.x, y)], Stroke::new(2.0, t.accent));
+        }
+        if let Some(drag) = resp.dnd_release_payload::<FavoriteDrag>()
+            && drag.0 != f.id
+        {
+            let after = ui.input(|i| i.pointer.interact_pos().is_some_and(|pos| pos.y >= r.center().y));
+            let _ = app.run("folder.reorderFavorite", json!({"id": drag.0, "target": f.id, "after": after}));
+        }
     }
     // Messages dragged out of the list are filed in the folder they are let go over.
     if let Some(drag) = resp.dnd_hover_payload::<crate::mail_view::MessageDrag>() {
@@ -671,8 +693,7 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
             };
             // What is listed: the favourites, and under each account what isn't folded away.
             let folded = app.ui.collapsed_folders.clone();
-            // The favourites as the engine lists them: Outlook's own, in Outlook's order, for an
-            // account whose server has them; else the ones that are marked here.
+            // The engine combines server and local favourites in the owner’s local order.
             let favorites: Vec<Folder> =
                 mailcraft_engine::cmd::folder::favorites(&app.session).into_iter().filter_map(|id| app.session.mailbox.folder(id).cloned()).collect();
             // And what there is to say of Outlook's, in one quiet line under the heading.

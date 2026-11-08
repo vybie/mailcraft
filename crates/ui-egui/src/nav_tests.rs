@@ -539,3 +539,39 @@ fn an_accounts_menu_moves_it_up_and_down() {
     assert_eq!(order(&harness), [family, work, first]);
     assert_eq!(harness.state().session.mailbox.default_account().map(|a| a.id), Some(first));
 }
+
+#[test]
+fn favorites_drag_across_accounts_and_survive_reopening() {
+    let mut h = window();
+    let first = h.state().session.mailbox.inbox().unwrap();
+    let other = h.state_mut().session.mailbox.add_account(mailcraft_model::Account { name: "Work".into(), ..Default::default() });
+    let remote = h.state().session.mailbox.folder_of_kind(other, FolderKind::Inbox).unwrap();
+    h.state_mut().session.mailbox.set_server_favorites(other, Some(vec![remote]));
+    h.run_steps(3);
+    let before = mailcraft_engine::cmd::folder::favorites(&h.state().session);
+    assert!(before.contains(&first) && before.contains(&remote));
+    assert_eq!(before.first(), Some(&remote));
+    let start = h.state().hit.rect("folder", first).unwrap().center();
+    let target = h.state().hit.rect("folder", remote).unwrap();
+    let end = pos2(target.center().x, target.min.y + 4.0);
+    h.event(egui::Event::PointerMoved(start));
+    h.step();
+    h.event(egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+    h.step();
+    h.event(egui::Event::PointerMoved(start + vec2(0.0, -8.0)));
+    h.step();
+    h.event(egui::Event::PointerMoved(end));
+    h.step();
+    h.event(egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: egui::Modifiers::NONE });
+    h.run_steps(3);
+    let ordered = mailcraft_engine::cmd::folder::favorites(&h.state().session);
+    assert_eq!(ordered.first(), Some(&first));
+    assert!(ordered.iter().position(|id| *id == first) < ordered.iter().position(|id| *id == remote));
+    assert_eq!(h.state().session.mailbox.server_favorites(other), Some(vec![remote]));
+    // Save a synthetic mailbox through the real file format and open it as a later run does.
+    let path = std::env::temp_dir().join(format!("mailcraft-favorites-order-{}.mailcraft", std::process::id()));
+    mailcraft_engine::store::save_single(&path, &h.state().session.mailbox).unwrap();
+    let reopened = mailcraft_engine::io::open_path(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(mailcraft_engine::cmd::folder::favorites(&Session::new(reopened)), ordered);
+}

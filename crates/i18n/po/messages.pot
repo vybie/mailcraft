@@ -7725,6 +7725,11 @@ msgstr ""
 msgid "Renewing the sign-in…"
 msgstr ""
 
+#. command label
+#: crates/engine/src/cmd/folder.rs
+msgid "Reorder Favorites"
+msgstr ""
+
 #. interface
 #: crates/ui-egui/src/forms.rs crates/ui-egui/src/meeting_dialogs/share.rs
 msgid "Repeats"
