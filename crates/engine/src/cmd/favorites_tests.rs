@@ -400,3 +400,22 @@ fn whatever_a_mailbox_file_said_of_how_favorites_were_read_it_opens() {
         assert_eq!(mailbox, t.s.mailbox, "{said}");
     }
 }
+
+#[test]
+fn reorder_favorites_is_local_validated_and_keeps_missing_entries() {
+    let mut t = setup();
+    t.s.mailbox.set_server_favorites(t.account, Some(vec![t.inbox, t.sent]));
+    let initial = favorites(&t.s);
+    assert_eq!(initial, vec![t.inbox, t.sent, t.local_inbox]);
+    run(&mut t.s, "folder.reorderFavorite", json!({"id": t.local_inbox, "target": t.inbox, "after": false}));
+    assert_eq!(favorites(&t.s), vec![t.local_inbox, t.inbox, t.sent]);
+    assert_eq!(t.s.mailbox.server_favorites(t.account), Some(vec![t.inbox, t.sent]));
+    t.s.mailbox.set_server_favorites(t.account, Some(vec![t.inbox]));
+    run(&mut t.s, "folder.reorderFavorite", json!({"id": t.inbox, "target": t.local_inbox, "after": false}));
+    t.s.mailbox.set_server_favorites(t.account, Some(vec![t.inbox, t.sent]));
+    assert_eq!(favorites(&t.s), vec![t.inbox, t.local_inbox, t.sent]);
+    let before = t.s.mailbox.favorite_order.clone();
+    assert!(t.s.run("folder.reorderFavorite", &json!({"id": t.apollo, "target": t.inbox, "after": true})).is_err());
+    assert!(t.s.run("folder.reorderFavorite", &json!({"id": t.inbox, "target": t.local_inbox})).is_err());
+    assert_eq!(t.s.mailbox.favorite_order, before);
+}

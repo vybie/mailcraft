@@ -28,6 +28,8 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("folder.favorite", "Add to Favorites", "Folder › Favorites", favorite).params(
             r#"{"value"?: bool (default: toggle), "id"?: number} — refused for a folder of an account whose Favorites come from its server (Outlook's list, which is changed in Outlook; `view.favorites` says which accounts those are). A shared mailbox's folders are favourites kept in MailCraft, whatever the account it is opened through has: nothing is written to any server for them"#,
         ),
+        CommandSpec::new("folder.reorderFavorite", "Reorder Favorites", "Folder › Favorites", reorder_favorite)
+            .params(r#"{"id": number, "target": number, "after": bool} — changes only the local display order"#),
         CommandSpec::new("view.favorites", "Favorites from Outlook", "File › Options", favorites_command).pure().params(
             r#"{"own"?: bool} — "own": true shows the Favorites that are marked here even for an account whose server has a list of its own, false the server's list where there is one (default: as it is). Answers what the folder pane lists under Favorites, in its order: {"own": bool, "favorites": [{"id", "name", "account", "path"}], "accounts": [{"account": number, "from": "server" | "mailbox", "listed": number}]}"#,
         ),
@@ -80,6 +82,8 @@ pub fn favorites(s: &Session) -> Vec<Id> {
         }
     }
     out.extend(s.mailbox.folders.iter().filter(|f| f.favorite && !served.contains(&f.account)).map(|f| f.id));
+    let rank: HashMap<Id, usize> = s.mailbox.favorite_order.iter().take(MAX_FAVORITES).enumerate().map(|(index, id)| (*id, index)).collect();
+    out.sort_by_key(|id| rank.get(id).copied().unwrap_or(usize::MAX));
     out.truncate(MAX_FAVORITES);
     out
 }
@@ -347,6 +351,32 @@ pub fn emptied_with(s: &Session, id: Id) -> Vec<Id> {
 /// The messages `folder.delete` of `id` takes with the folder: those in it and under it.
 pub fn deleted_with(s: &Session, id: Id) -> Vec<Id> {
     held_under(s, &[id])
+}
+
+fn reorder_favorite(s: &mut Session, v: &Value) -> CmdResult {
+    let id = p::req_id(v, "id")?;
+    let target = p::req_id(v, "target")?;
+    let after = p::bool(v, "after").ok_or_else(|| bad("`after` is true or false"))?;
+    let mut order = favorites(s);
+    if !order.contains(&id) || !order.contains(&target) {
+        return Err(bad("both folders must be in Favorites"));
+    }
+    if id != target {
+        order.retain(|entry| *entry != id);
+        let position = order.iter().position(|entry| *entry == target).ok_or_else(|| bad("target is not in Favorites"))?;
+        order.insert(position + usize::from(after), id);
+        // Preserve entries temporarily absent while a server's Favorites are unavailable.
+        for entry in s.mailbox.favorite_order.iter().copied().take(MAX_FAVORITES) {
+            if order.len() >= MAX_FAVORITES {
+                break;
+            }
+            if !order.contains(&entry) {
+                order.push(entry);
+            }
+        }
+        s.mailbox.favorite_order = order;
+    }
+    Ok(json!({"favorites": favorites(s)}))
 }
 
 fn empty(s: &mut Session, v: &Value) -> CmdResult {
