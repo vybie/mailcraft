@@ -10,9 +10,8 @@
 //!   `ActionInvoked` for the alert's default action, where the service has actions. The body is
 //!   escaped where the service reads markup in it, so that what a message says is shown as text
 //!   and nothing in it is fetched. No service: Options says so.
-//! - **Windows**: toasts (`Windows.UI.Notifications`), for the AppUserModelID `MailCraft.MailCraft`
-//!   that the `.msi` gives its Start menu shortcut: Windows shows a program's toasts only when it
-//!   knows the program by such a shortcut, so a copy the `.msi` didn't install says so in Options.
+//! - **Windows**: toasts (`Windows.UI.Notifications`), using the installed or personal build's
+//!   AppUserModelID. Windows requires a registered Start menu shortcut for desktop toasts.
 //!   The text goes into the toast's XML as text nodes, never as markup. A click while MailCraft
 //!   runs comes back through the toast's `Activated`. (The process doesn't declare the id itself:
 //!   that call is `unsafe` in the bindings, which this program forbids; started from the shortcut,
@@ -290,11 +289,11 @@ mod toasts {
     use std::sync::Mutex;
     use std::sync::mpsc::Receiver;
 
-    use mailcraft_ui_egui::alerts::{AlertHost, AlertTrouble, DesktopAlert};
+    use mailcraft_ui_egui::alerts::{AlertAction, AlertHost, AlertTrouble, DesktopAlert, Opens};
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::Foundation::TypedEventHandler;
-    use windows::UI::Notifications::{NotificationSetting, ToastNotification, ToastNotificationManager, ToastTemplateType};
-    use windows::core::{HSTRING, IInspectable};
+    use windows::UI::Notifications::{NotificationSetting, ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
+    use windows::core::{HSTRING, IInspectable, Interface};
 
     use super::{Clicks, drain};
 
@@ -303,24 +302,29 @@ mod toasts {
     pub const APP_ID: &str = "MailCraft.MailCraft";
     /// How many toasts are kept, so that a click on one is still heard.
     const KEPT: usize = 50;
+    const PERSONAL_APP_ID: &str = "MailCraft.Desktop";
 
     pub struct Toasts {
         clicks: Clicks,
         rx: Receiver<u64>,
-        installed: bool,
+        app_id: &'static str,
         turned_off: Mutex<bool>,
         kept: Mutex<VecDeque<ToastNotification>>,
+        action_tx: std::sync::mpsc::Sender<(u64, AlertAction)>,
+        action_rx: Receiver<(u64, AlertAction)>,
+        ctx: egui::Context,
     }
 
     impl Toasts {
         pub fn new(ctx: egui::Context) -> Toasts {
-            let (clicks, rx) = Clicks::new(ctx);
-            let installed = crate::install::this_copy() == crate::install::Install::Msi;
-            Toasts { clicks, rx, installed, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()) }
+            let (clicks, rx) = Clicks::new(ctx.clone());
+            let app_id = if crate::install::this_copy() == crate::install::Install::Msi { APP_ID } else { PERSONAL_APP_ID };
+            let (action_tx, action_rx) = std::sync::mpsc::channel();
+            Toasts { clicks, rx, app_id, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()), action_tx, action_rx, ctx }
         }
 
         fn toast(&self, alert: &DesktopAlert) -> windows::core::Result<()> {
-            let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?;
+            let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(self.app_id))?;
             if let Ok(setting) = notifier.Setting() {
                 let off = setting != NotificationSetting::Enabled;
                 if let Ok(mut turned_off) = self.turned_off.lock() {
@@ -331,16 +335,44 @@ mod toasts {
                 }
             }
             // A title line and a body line, as text nodes: nothing of the message is read as XML.
-            let xml: XmlDocument = ToastNotificationManager::GetTemplateContent(ToastTemplateType::ToastText02)?;
+            let xml = XmlDocument::new()?;
+            xml.LoadXml(&HSTRING::from("<toast><visual><binding template=\"ToastGeneric\"><text/><text/></binding></visual></toast>"))?;
             let lines = xml.GetElementsByTagName(&HSTRING::from("text"))?;
             for (at, text) in [(0u32, alert.title.as_str()), (1, alert.body.as_str())] {
                 let node = xml.CreateTextNode(&HSTRING::from(text))?;
                 lines.GetAt(at)?.AppendChild(&node)?;
             }
+            if matches!(alert.opens, Opens::Message { .. }) {
+                let actions = xml.CreateElement(&HSTRING::from("actions"))?;
+                for (symbol, argument) in [("✕", "dismiss"), ("✉", "read"), ("🗑", "delete")] {
+                    let button = xml.CreateElement(&HSTRING::from("action"))?;
+                    button.SetAttribute(&HSTRING::from("content"), &HSTRING::from(symbol))?;
+                    button.SetAttribute(&HSTRING::from("arguments"), &HSTRING::from(argument))?;
+                    actions.AppendChild(&button)?;
+                }
+                xml.DocumentElement()?.AppendChild(&actions)?;
+            }
             let toast = ToastNotification::CreateToastNotification(&xml)?;
             let (clicks, key) = (self.clicks.clone(), alert.key);
-            toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, _| {
-                clicks.clicked(key);
+            let (tx, ctx) = (self.action_tx.clone(), self.ctx.clone());
+            toast.Activated(&TypedEventHandler::<ToastNotification, IInspectable>::new(move |_, args| {
+                let argument = args
+                    .as_ref()
+                    .and_then(|a| a.cast::<ToastActivatedEventArgs>().ok())
+                    .and_then(|a| a.Arguments().ok())
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                let action = match argument.as_str() {
+                    "read" => Some(AlertAction::MarkRead),
+                    "delete" => Some(AlertAction::Delete),
+                    _ => None,
+                };
+                if let Some(action) = action {
+                    let _ = tx.send((key, action));
+                    ctx.request_repaint();
+                } else if argument.is_empty() {
+                    clicks.clicked(key);
+                }
                 Ok(())
             }))?;
             notifier.Show(&toast)?;
@@ -356,19 +388,16 @@ mod toasts {
 
     impl AlertHost for Toasts {
         fn show(&self, alert: &DesktopAlert) -> Result<(), String> {
-            if !self.installed {
-                return Err("not installed by the .msi".into());
-            }
             self.toast(alert).map_err(|e| e.to_string())
         }
         fn trouble(&self) -> Option<AlertTrouble> {
-            if !self.installed {
-                return Some(AlertTrouble::NotInstalled);
-            }
             self.turned_off.lock().ok().filter(|off| **off).map(|_| AlertTrouble::TurnedOff)
         }
         fn clicked(&self) -> Vec<u64> {
             drain(&self.rx)
+        }
+        fn actions(&self) -> Vec<(u64, AlertAction)> {
+            self.action_rx.try_iter().take(20).collect()
         }
     }
 }

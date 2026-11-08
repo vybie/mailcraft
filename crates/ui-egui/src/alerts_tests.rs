@@ -16,6 +16,7 @@ use crate::{MailApp, Services};
 struct Recorder {
     shown: Arc<Mutex<Vec<DesktopAlert>>>,
     clicks: Arc<Mutex<Vec<u64>>>,
+    actions: Arc<Mutex<Vec<(u64, AlertAction)>>>,
     trouble: Option<AlertTrouble>,
 }
 
@@ -29,6 +30,9 @@ impl AlertHost for Recorder {
     }
     fn clicked(&self) -> Vec<u64> {
         std::mem::take(&mut *self.clicks.lock().unwrap())
+    }
+    fn actions(&self) -> Vec<(u64, AlertAction)> {
+        std::mem::take(&mut *self.actions.lock().unwrap())
     }
 }
 
@@ -240,6 +244,37 @@ fn a_click_brings_the_message_up_and_nothing_else_opens_anything() {
     frame(&mut app, &ctx, false);
     assert_eq!(app.session.view.folder, inbox);
     assert_eq!(app.session.sel.focus(), Some(message));
+}
+
+#[test]
+fn notification_actions_apply_only_to_the_notified_message() {
+    let (mut app, recorder, account, inbox) = window();
+    let ctx = egui::Context::default();
+    run(&mut app, &ctx, false, account, inbox, &[(2, "A", "First"), (3, "B", "Second")]);
+    let shown = recorder.shown.lock().unwrap().clone();
+    let Opens::Message { message: first, .. } = shown[0].opens else { panic!() };
+    let Opens::Message { message: second, .. } = shown[1].opens else { panic!() };
+    recorder.actions.lock().unwrap().push((shown[0].key, AlertAction::MarkRead));
+    frame(&mut app, &ctx, false);
+    assert!(app.session.mailbox.message(first).unwrap().read);
+    assert!(!app.session.mailbox.message(second).unwrap().read);
+    recorder.actions.lock().unwrap().push((shown[1].key, AlertAction::Delete));
+    frame(&mut app, &ctx, false);
+    assert_ne!(app.session.mailbox.message(second).unwrap().folder, inbox);
+    assert_eq!(app.session.mailbox.message(first).unwrap().folder, inbox);
+}
+
+#[test]
+fn notification_action_ignores_a_different_mailbox() {
+    let (mut app, recorder, account, inbox) = window();
+    let ctx = egui::Context::default();
+    run(&mut app, &ctx, false, account, inbox, &[(2, "A", "First")]);
+    let alert = recorder.shown.lock().unwrap()[0].clone();
+    let Opens::Message { message, .. } = alert.opens else { panic!() };
+    app.session.path = Some("different-mailbox".into());
+    recorder.actions.lock().unwrap().push((alert.key, AlertAction::Delete));
+    frame(&mut app, &ctx, false);
+    assert_eq!(app.session.mailbox.message(message).unwrap().folder, inbox);
 }
 
 #[test]
