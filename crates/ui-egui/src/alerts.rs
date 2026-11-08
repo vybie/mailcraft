@@ -245,7 +245,7 @@ fn show(app: &mut MailApp, planned: Vec<Planned>) {
                 app.alerts.shown.push_back(alert);
             }
             // (Nothing of the message in the log: only that it failed, and why.)
-            Err(e) => log::debug!("a desktop alert wasn't shown: {e}"),
+            Err(e) => log::warn!("a desktop alert wasn't shown: {e}"),
         }
     }
 }

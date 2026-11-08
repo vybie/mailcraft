@@ -10,9 +10,8 @@
 //!   `ActionInvoked` for the alert's default action, where the service has actions. The body is
 //!   escaped where the service reads markup in it, so that what a message says is shown as text
 //!   and nothing in it is fetched. No service: Options says so.
-//! - **Windows**: toasts (`Windows.UI.Notifications`), for the AppUserModelID `MailCraft.MailCraft`
-//!   that the `.msi` gives its Start menu shortcut: Windows shows a program's toasts only when it
-//!   knows the program by such a shortcut, so a copy the `.msi` didn't install says so in Options.
+//! - **Windows**: toasts (`Windows.UI.Notifications`), using the installed or personal build's
+//!   AppUserModelID. Windows requires a registered Start menu shortcut for desktop toasts.
 //!   The text goes into the toast's XML as text nodes, never as markup. A click while MailCraft
 //!   runs comes back through the toast's `Activated`. (The process doesn't declare the id itself:
 //!   that call is `unsafe` in the bindings, which this program forbids; started from the shortcut,
@@ -303,11 +302,12 @@ mod toasts {
     pub const APP_ID: &str = "MailCraft.MailCraft";
     /// How many toasts are kept, so that a click on one is still heard.
     const KEPT: usize = 50;
+    const PERSONAL_APP_ID: &str = "MailCraft.Desktop";
 
     pub struct Toasts {
         clicks: Clicks,
         rx: Receiver<u64>,
-        installed: bool,
+        app_id: &'static str,
         turned_off: Mutex<bool>,
         kept: Mutex<VecDeque<ToastNotification>>,
         action_tx: std::sync::mpsc::Sender<(u64, AlertAction)>,
@@ -318,13 +318,13 @@ mod toasts {
     impl Toasts {
         pub fn new(ctx: egui::Context) -> Toasts {
             let (clicks, rx) = Clicks::new(ctx.clone());
-            let installed = crate::install::this_copy() == crate::install::Install::Msi;
+            let app_id = if crate::install::this_copy() == crate::install::Install::Msi { APP_ID } else { PERSONAL_APP_ID };
             let (action_tx, action_rx) = std::sync::mpsc::channel();
-            Toasts { clicks, rx, installed, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()), action_tx, action_rx, ctx }
+            Toasts { clicks, rx, app_id, turned_off: Mutex::new(false), kept: Mutex::new(VecDeque::new()), action_tx, action_rx, ctx }
         }
 
         fn toast(&self, alert: &DesktopAlert) -> windows::core::Result<()> {
-            let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_ID))?;
+            let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(self.app_id))?;
             if let Ok(setting) = notifier.Setting() {
                 let off = setting != NotificationSetting::Enabled;
                 if let Ok(mut turned_off) = self.turned_off.lock() {
@@ -388,15 +388,9 @@ mod toasts {
 
     impl AlertHost for Toasts {
         fn show(&self, alert: &DesktopAlert) -> Result<(), String> {
-            if !self.installed {
-                return Err("not installed by the .msi".into());
-            }
             self.toast(alert).map_err(|e| e.to_string())
         }
         fn trouble(&self) -> Option<AlertTrouble> {
-            if !self.installed {
-                return Some(AlertTrouble::NotInstalled);
-            }
             self.turned_off.lock().ok().filter(|off| **off).map(|_| AlertTrouble::TurnedOff)
         }
         fn clicked(&self) -> Vec<u64> {
